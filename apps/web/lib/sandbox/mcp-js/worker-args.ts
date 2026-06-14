@@ -5,8 +5,14 @@ import type {
 
 /** Inputs for {@link buildMcpV8WorkerArgs}. */
 export interface BuildWorkerArgsParams {
-  /** Port the worker's MCP HTTP API binds to. */
+  /** Port the worker's MCP transport binds to. */
   httpPort: number;
+  /**
+   * MCP transport to serve on `httpPort`. Per-session workers use `"sse"`
+   * because the agent's MCP client connects over SSE (`/sse`); the coordinator
+   * defaults to `"http"` (it serves no sessions, only satisfies cluster mode).
+   */
+  transport?: "http" | "sse";
   /** Port the worker's Raft cluster HTTP server binds to. */
   clusterPort: number;
   /** Unique cluster node id (the coordinator uses a fixed id; workers use the session id). */
@@ -39,8 +45,9 @@ export interface BuildWorkerArgsParams {
  * URL — mcp-v8 is secure-by-default, so anything else stays denied.
  */
 export function buildMcpV8WorkerArgs(params: BuildWorkerArgsParams): string[] {
+  const portFlag = params.transport === "sse" ? "sse-port" : "http-port";
   const args = [
-    `--http-port=${params.httpPort}`,
+    `--${portFlag}=${params.httpPort}`,
     `--directory-path=${params.storageDir}/heaps`,
     `--session-db-path=${params.storageDir}/sessions/${params.nodeId}`,
     `--cluster-port=${params.clusterPort}`,

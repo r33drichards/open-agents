@@ -295,6 +295,8 @@ export class SubprocessWorkerProvider implements McpJsWorkerProvider {
       advertiseHost: this.clusterHost,
       join: `${this.clusterHost}:${main.clusterPort}`,
       asLearner: true,
+      // The agent's MCP client connects over SSE (`<baseUrl>/sse`).
+      transport: "sse",
       runtimeConfig: params.runtimeConfig,
     });
 

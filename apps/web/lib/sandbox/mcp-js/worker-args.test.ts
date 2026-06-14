@@ -21,7 +21,7 @@ describe("buildMcpV8WorkerArgs", () => {
     ]);
   });
 
-  test("a per-session worker joins as a learner with a per-node session db", () => {
+  test("a per-session worker joins as a learner over SSE with a per-node session db", () => {
     const args = buildMcpV8WorkerArgs({
       httpPort: 5001,
       clusterPort: 5002,
@@ -30,10 +30,11 @@ describe("buildMcpV8WorkerArgs", () => {
       advertiseHost: "127.0.0.1",
       join: "127.0.0.1:4322",
       asLearner: true,
+      transport: "sse",
     });
 
     expect(args).toEqual([
-      "--http-port=5001",
+      "--sse-port=5001",
       "--directory-path=/srv/mcp-js/heaps",
       "--session-db-path=/srv/mcp-js/sessions/sess-abc",
       "--cluster-port=5002",
