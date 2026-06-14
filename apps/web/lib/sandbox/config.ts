@@ -106,12 +106,21 @@ export const MCP_JS_BIN = process.env.MCP_JS_BIN ?? "mcp-v8";
 /** Shared content-addressed store directory for subprocess-mode workers. */
 export const MCP_JS_STORAGE_DIR = process.env.MCP_JS_STORAGE_DIR ?? ".mcp-js";
 
+/** Host the local mcp-v8 cluster nodes advertise/reach each other on. */
+export const MCP_JS_CLUSTER_HOST =
+  process.env.MCP_JS_CLUSTER_HOST ?? "127.0.0.1";
+
 /** Options for the subprocess worker provider, sourced from the environment. */
 export function getSubprocessWorkerOptions(): {
   binaryPath: string;
   storageDir: string;
+  clusterHost: string;
 } {
-  return { binaryPath: MCP_JS_BIN, storageDir: MCP_JS_STORAGE_DIR };
+  return {
+    binaryPath: MCP_JS_BIN,
+    storageDir: MCP_JS_STORAGE_DIR,
+    clusterHost: MCP_JS_CLUSTER_HOST,
+  };
 }
 
 /** Whether the mcp-js runtime is selected for sandbox provisioning. */

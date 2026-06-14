@@ -5,31 +5,55 @@ import type {
 
 /** Inputs for {@link buildMcpV8WorkerArgs}. */
 export interface BuildWorkerArgsParams {
-  /** Port the worker's HTTP API binds to. */
+  /** Port the worker's MCP HTTP API binds to. */
   httpPort: number;
+  /** Port the worker's Raft cluster HTTP server binds to. */
+  clusterPort: number;
+  /** Unique cluster node id (the coordinator uses a fixed id; workers use the session id). */
+  nodeId: string;
   /**
-   * Shared content-addressed store directory. Heaps and session metadata live
-   * under it, so every worker pointed at the same directory shares storage.
+   * Shared content-addressed store directory. Heaps live under `<dir>/heaps`
+   * and are shared by every node (content-addressed, safe for concurrent
+   * access). Each node gets its own session DB under `<dir>/sessions/<nodeId>`
+   * — Raft keeps those consistent, so they must NOT be shared.
    */
   storageDir: string;
+  /** Host other nodes use to reach this one (write forwarding / peer discovery). */
+  advertiseHost: string;
+  /** Seed address (`host:port`) to join an existing cluster. Omitted for the coordinator. */
+  join?: string;
+  /** Join as a non-voting learner (per-session workers) rather than a voter. */
+  asLearner?: boolean;
   /** Declarative per-session runtime config. */
   runtimeConfig?: McpJsRuntimeConfig;
 }
 
 /**
- * Build mcp-v8 launch arguments from a session's declarative runtime config.
+ * Build mcp-v8 launch arguments for a clustered worker.
  *
- * Storage flags point every worker at the same content-addressed store, so
- * compute is isolated per process while state is shared. Capability policies are
- * emitted only for capabilities granted an OPA policy URL — mcp-v8 is
- * secure-by-default, so anything else stays denied.
+ * The coordinator ("main") node runs as a voter and owns the write quorum;
+ * per-session workers join as non-voting learners so their churn never affects
+ * the cluster's ability to commit (see the mcp-js learner support). Heaps are
+ * shared via `--directory-path`; session metadata is replicated through Raft.
+ * Capability policies are emitted only for capabilities granted an OPA policy
+ * URL — mcp-v8 is secure-by-default, so anything else stays denied.
  */
 export function buildMcpV8WorkerArgs(params: BuildWorkerArgsParams): string[] {
   const args = [
     `--http-port=${params.httpPort}`,
     `--directory-path=${params.storageDir}/heaps`,
-    `--session-db-path=${params.storageDir}/sessions`,
+    `--session-db-path=${params.storageDir}/sessions/${params.nodeId}`,
+    `--cluster-port=${params.clusterPort}`,
+    `--node-id=${params.nodeId}`,
+    `--advertise-addr=${params.advertiseHost}:${params.clusterPort}`,
   ];
+
+  if (params.join) {
+    args.push(`--join=${params.join}`);
+  }
+  if (params.asLearner) {
+    args.push("--join-as-learner");
+  }
 
   const policiesJson = buildPoliciesJson(params.runtimeConfig?.capabilities);
   if (policiesJson) {
