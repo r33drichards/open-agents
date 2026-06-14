@@ -46,7 +46,11 @@ export function isManagedTemplateDeployment(url: string | URL) {
     return true;
   }
 
+  // Local dev is a full self-hosted deployment by default. The hosted-demo
+  // trial caps (1 session / 5 messages) only apply locally when explicitly
+  // opted in via OPEN_AGENTS_TRIAL_DEMO=1, so they don't get in the way.
   if (
+    process.env.OPEN_AGENTS_TRIAL_DEMO === "1" &&
     process.env.NODE_ENV === "development" &&
     requestHost &&
     LOCAL_DEVELOPMENT_HOSTS.has(requestHost)
