@@ -347,7 +347,73 @@ export interface BuildSystemPromptOptions {
   environmentDetails?: string;
   skills?: SkillMetadata[];
   modelId?: string;
+  /**
+   * Execution environment for the agent's tools.
+   * - `cloud`: a POSIX shell + filesystem (the default; read/write/bash/etc).
+   * - `js`: a JavaScript-only mcp-v8 sandbox whose tools arrive over MCP.
+   */
+  toolEnvironment?: "cloud" | "js";
 }
+
+/**
+ * Authoritative override for the JS-only (mcp-v8) runtime. The core prompt
+ * documents shell/file tools that do not exist here, so this block redefines
+ * the toolset for that environment. The model's actual ToolSet only contains
+ * the MCP tools, so this keeps guidance consistent with reality.
+ */
+const JS_RUNTIME_TOOLS_OVERRIDE = `# Execution Environment (IMPORTANT)
+
+This task runs in a remote JavaScript-only sandbox (mcp-v8), NOT a POSIX shell.
+The File Operations and Shell tools listed above (\`read\`, \`write\`, \`edit\`,
+\`grep\`, \`glob\`, \`bash\`) are NOT available in this environment. Ignore that
+guidance here.
+
+Your execution tools are provided over MCP:
+- \`run_js\` - Execute JavaScript (ES modules, top-level await). This is your
+  primary tool. Read and write files under the \`/work\` scratch directory with
+  \`await fs.readFile('/work/x')\` / \`await fs.writeFile('/work/x', data)\`.
+  \`fetch\` is available everywhere, and \`console.log\` output is returned to you.
+- Language tools (e.g. \`runjs__wasm__lua\`, \`runjs__wasm__picat\`) run other
+  languages when a task calls for them.
+
+Do filesystem work, searching, and any command-style task by writing JavaScript
+for \`run_js\`.`;
+
+/**
+ * Always-on guidance for the agent's self-authored skill library. These tools
+ * are DB-backed, so they work in every environment.
+ */
+const SKILL_AUTHORING_PROMPT = `# Authoring Your Own Skills
+
+You maintain a personal, persistent library of reusable skills:
+- \`write_skill\` - Save a repeatable workflow (a checklist, recipe, or project
+  convention) as a named skill. Saved skills persist across sessions and show up
+  in your "Available skills" list, ready to invoke with the \`skill\` tool.
+- \`read_skill\` - Read a saved skill's body before editing, so you refine rather
+  than overwrite it.
+- \`delete_skill\` - Remove a saved skill you no longer need.
+
+When you work out a procedure you expect to repeat, capture it with
+\`write_skill\`. Keep skill bodies concise and action-oriented, and do not include
+YAML frontmatter.`;
+
+/**
+ * Always-on guidance for scheduling prompts to run automatically. DB-backed, so
+ * these tools work in every environment.
+ */
+const SCHEDULED_TASKS_PROMPT = `# Scheduling Tasks
+
+You can schedule a prompt to run automatically, later or on repeat:
+- \`cron_create\` - Schedule a prompt by cron expression ("0 9 * * 1-5"), interval
+  ("5m", "every 2 hours"), relative time ("in 30 minutes"), or absolute ISO
+  timestamp. Use \`fireMode: "same-session"\` (default) to re-run in this session,
+  or \`"fresh-session"\` to spin up a new session each run.
+- \`cron_list\` - List scheduled tasks with their ids, schedules, and run times.
+- \`cron_delete\` - Cancel a scheduled task by id.
+
+Use these when the user asks to poll something, run work on a schedule, or be
+reminded later. Convert natural-language times ("tomorrow at 9am") into a cron
+expression or an absolute ISO timestamp yourself before calling.`;
 
 /**
  * Build the skills section for the system prompt.
@@ -413,6 +479,13 @@ export function buildSystemPrompt(options: BuildSystemPromptOptions): string {
   const family = detectModelFamily(options.modelId);
 
   const parts = [CORE_SYSTEM_PROMPT, getModelOverlay(family, options.modelId)];
+
+  if (options.toolEnvironment === "js") {
+    parts.push(`\n${JS_RUNTIME_TOOLS_OVERRIDE}`);
+  }
+
+  parts.push(`\n${SKILL_AUTHORING_PROMPT}`);
+  parts.push(`\n${SCHEDULED_TASKS_PROMPT}`);
 
   if (options.cwd) {
     parts.push(

@@ -375,6 +375,83 @@ export const userPreferences = pgTable("user_preferences", {
 export type UserPreferences = typeof userPreferences.$inferSelect;
 export type NewUserPreferences = typeof userPreferences.$inferInsert;
 
+// user-authored skills
+// Skills the agent creates/edits for itself, stored per user so they persist
+// across sessions and sandboxes (the JS sandbox has no durable filesystem).
+export const userSkills = pgTable(
+  "user_skills",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    description: text("description").notNull(),
+    body: text("body").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("user_skills_user_id_name_unique").on(table.userId, table.name),
+    index("user_skills_user_id_idx").on(table.userId),
+  ],
+);
+
+export type UserSkill = typeof userSkills.$inferSelect;
+export type NewUserSkill = typeof userSkills.$inferInsert;
+
+// Scheduled tasks — durable cron/one-shot prompts that re-run automatically.
+// Each task is driven by a self-rescheduling durable workflow
+// (app/workflows/scheduled-task.ts), mirroring the sandbox lifecycle workflow.
+export const scheduledTasks = pgTable(
+  "scheduled_tasks",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    // "Home" session: the config source and the same-session fire target.
+    sessionId: text("session_id")
+      .notNull()
+      .references(() => sessions.id, { onDelete: "cascade" }),
+    // Target chat for same-session fires (null for fresh-session tasks).
+    chatId: text("chat_id").references(() => chats.id, { onDelete: "cascade" }),
+    prompt: text("prompt").notNull(),
+    modelId: text("model_id"),
+    scheduleKind: text("schedule_kind", {
+      enum: ["recurring", "once"],
+    }).notNull(),
+    // Set for recurring tasks (5-field cron); null for one-shot.
+    cronExpression: text("cron_expression"),
+    // Set for one-shot tasks; null for recurring.
+    fireAt: timestamp("fire_at"),
+    // IANA timezone captured at creation so cron is interpreted in local time.
+    timezone: text("timezone").notNull(),
+    fireMode: text("fire_mode", {
+      enum: ["same-session", "fresh-session"],
+    })
+      .notNull()
+      .default("same-session"),
+    enabled: boolean("enabled").notNull().default(true),
+    nextRunAt: timestamp("next_run_at"),
+    lastRunAt: timestamp("last_run_at"),
+    // Historical pointers to the chat/session of the most recent fire.
+    lastRunChatId: text("last_run_chat_id"),
+    lastRunSessionId: text("last_run_session_id"),
+    // Durable-workflow lease (mirrors sessions.lifecycleRunId).
+    schedulerRunId: text("scheduler_run_id"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("scheduled_tasks_user_id_idx").on(table.userId),
+    index("scheduled_tasks_session_id_idx").on(table.sessionId),
+  ],
+);
+
+export type ScheduledTask = typeof scheduledTasks.$inferSelect;
+export type NewScheduledTask = typeof scheduledTasks.$inferInsert;
+
 // Usage tracking — one row per assistant turn (append-only)
 export const usageEvents = pgTable("usage_events", {
   id: text("id").primaryKey(),

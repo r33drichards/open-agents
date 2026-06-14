@@ -1,5 +1,6 @@
+import { gateway } from "@open-agents/agent";
 import { connectSandbox } from "@open-agents/sandbox";
-import { gateway, generateText } from "ai";
+import { generateText } from "ai";
 import { checkBotProtection } from "@/lib/botid";
 import { getSessionById } from "@/lib/db/sessions";
 import { checkRateLimit, rateLimitKey } from "@/lib/rate-limit";

@@ -260,6 +260,20 @@
       "when": 1778835412125,
       "tag": "0036_faulty_yellow_claw",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1781436131479,
+      "tag": "0037_perpetual_richard_fisk",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1781465778699,
+      "tag": "0038_slow_hairball",
+      "breakpoints": true
     }
   ]
 }

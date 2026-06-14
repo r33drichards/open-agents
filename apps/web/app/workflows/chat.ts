@@ -736,6 +736,7 @@ export async function runAgentWorkflow(options: Options) {
           workflowRunId,
           options.chatId,
           options.sessionId,
+          options.userId,
           selectedModelId,
           modelId,
           agentOptions,
@@ -1006,6 +1007,7 @@ const runAgentStep = async (
   workflowRunId: string,
   chatId: string,
   sessionId: string,
+  userId: string,
   selectedModelId: string,
   modelId: string,
   agentOptions: OpenAgentCallOptions,
@@ -1015,6 +1017,10 @@ const runAgentStep = async (
 
   const stepStartedAt = new Date();
   const { webAgent } = await import("@/app/config");
+  const { createUserSkillStore } =
+    await import("@/lib/skills/user-skill-store");
+  const { createScheduledTaskStore } =
+    await import("@/lib/scheduling/scheduled-task-store");
 
   const abortController = new AbortController();
   const stopMonitor = startStopMonitor(workflowRunId, abortController);
@@ -1042,7 +1048,17 @@ const runAgentStep = async (
 
     const result = await webAgent.stream({
       messages,
-      options: agentOptions,
+      // The skill and scheduled-task stores are live objects built fresh in
+      // this step and passed in-process (never serialized across the boundary).
+      options: {
+        ...agentOptions,
+        skillStore: createUserSkillStore(userId),
+        scheduledTaskStore: createScheduledTaskStore({
+          userId,
+          sessionId,
+          chatId,
+        }),
+      },
       abortSignal: abortController.signal,
     });
 

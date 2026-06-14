@@ -78,6 +78,16 @@ Important:
       };
     }
 
+    // User-authored skills carry their body inline (no sandbox file to read).
+    if (foundSkill.body !== undefined) {
+      return {
+        success: true,
+        skillName: skill,
+        skillPath: foundSkill.path,
+        content: substituteArguments(foundSkill.body, args),
+      };
+    }
+
     // Load skill content via sandbox
     const skillFilePath = path.join(foundSkill.path, foundSkill.filename);
     let fileContent: string;

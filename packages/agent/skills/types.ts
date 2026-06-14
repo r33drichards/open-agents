@@ -61,12 +61,19 @@ export interface SkillMetadata {
   name: string;
   /** Short description for the agent */
   description: string;
-  /** Path to the skill directory */
+  /** Path to the skill directory (empty for user-authored skills) */
   path: string;
-  /** Filename of the skill file (SKILL.md or skill.md) */
+  /** Filename of the skill file (empty for user-authored skills) */
   filename: string;
   /** Skill options from frontmatter */
   options: SkillOptions;
+  /** Where the skill came from. Defaults to sandbox discovery. */
+  source?: "sandbox" | "user";
+  /**
+   * Inline skill body. Set for user-authored skills, which have no sandbox
+   * file to read; when present the `skill` tool uses it directly.
+   */
+  body?: string;
 }
 
 /**

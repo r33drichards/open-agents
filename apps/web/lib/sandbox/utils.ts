@@ -56,6 +56,12 @@ export function isSandboxActive(
 ): state is SandboxState {
   if (!state) return false;
 
+  // mcp-js sandboxes are always active once provisioned — they have no expiry.
+  // A provisioned mcp-js state always has a non-empty baseUrl.
+  if (state.type === "mcp-js") {
+    return Boolean(state.baseUrl);
+  }
+
   const expiresAt = getSandboxExpiresAt(state);
   if (expiresAt === undefined) {
     return false;

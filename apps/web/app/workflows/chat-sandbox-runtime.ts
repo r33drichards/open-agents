@@ -5,12 +5,17 @@ import {
   type SandboxState,
 } from "@open-agents/sandbox";
 import { getSessionById } from "@/lib/db/sessions";
+import { listUserSkills } from "@/lib/db/user-skills";
 import {
   kickSandboxProvisioningWorkflow,
   waitForSandboxProvisioningRun,
 } from "@/lib/sandbox/provisioning-kick";
 import { isSandboxActive } from "@/lib/sandbox/utils";
 import { getSandboxSkillDirectories } from "@/lib/skills/directories";
+import {
+  mergeUserSkills,
+  userSkillToMetadata,
+} from "@/lib/skills/user-skill-store";
 import { getCachedSkills, setCachedSkills } from "@/lib/skills-cache";
 
 type SessionRecord = NonNullable<Awaited<ReturnType<typeof getSessionById>>>;
@@ -101,11 +106,19 @@ export async function resolveChatSandboxRuntime(params: {
   }
   const sandbox = await connectSandbox(sandboxState);
 
-  const skills = await loadSessionSkills({
+  const discoveredSkills = await loadSessionSkills({
     sessionId: params.sessionId,
     sandboxState,
     sandbox,
   });
+
+  // User-authored skills are loaded fresh (not cached) so newly written skills
+  // are available on the next turn, then merged with sandbox-discovered ones.
+  const userSkillRows = await listUserSkills(params.userId);
+  const skills = mergeUserSkills(
+    discoveredSkills,
+    userSkillRows.map(userSkillToMetadata),
+  );
 
   return {
     sandboxState,
