@@ -24,18 +24,25 @@ describe("McpJsSandbox", () => {
     ).rejects.toBeInstanceOf(McpJsUnsupportedOperationError);
   });
 
-  test("getState round-trips the connection state", () => {
+  test("getState round-trips the session label without a heap key", () => {
     const sandbox = new McpJsSandbox({
       baseUrl: "http://localhost:8080",
-      heap: "heap-123",
       session: "sess-1",
     });
     expect(sandbox.getState()).toEqual({
       baseUrl: "http://localhost:8080",
-      heap: "heap-123",
       session: "sess-1",
       workingDirectory: "/work",
     });
+  });
+
+  test("getState includes an explicit heap override when set", () => {
+    const sandbox = new McpJsSandbox({
+      baseUrl: "http://localhost:8080",
+      session: "sess-1",
+      heap: "heap-123",
+    });
+    expect(sandbox.getState().heap).toBe("heap-123");
   });
 
   test("connectMcpJs requires a baseUrl", async () => {

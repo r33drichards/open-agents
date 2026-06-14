@@ -1,6 +1,5 @@
 import "server-only";
 
-import { randomUUID } from "node:crypto";
 import {
   connectSandbox,
   DEFAULT_MCP_JS_WORKING_DIRECTORY,
@@ -20,9 +19,11 @@ type McpJsSandboxState = Extract<SandboxState, { type: "mcp-js" }>;
 /**
  * Build the persisted state for an mcp-js sandbox.
  *
- * The only durable state is the server URL plus a heap id that carries JS
- * globals forward between executions. An existing heap id is reused so a
- * resumed session keeps its accumulated state; otherwise a fresh one is minted.
+ * The only durable state is the server URL plus a stable `session` label. The
+ * server restores that session's most-recent heap on each run and snapshots the
+ * result automatically, so JS globals accumulate across executions without the
+ * client ever tracking the (content-addressed) heap key. The session row id is
+ * a natural stable label and is reused on resume.
  */
 export function buildMcpJsSandboxState(
   session: SessionRecord,
@@ -33,16 +34,9 @@ export function buildMcpJsSandboxState(
     );
   }
 
-  const existing = session.sandboxState;
-  const heap =
-    existing?.type === "mcp-js" && existing.heap
-      ? existing.heap
-      : `session-${session.id}-${randomUUID()}`;
-
   return {
     type: "mcp-js",
     baseUrl: MCP_JS_BASE_URL,
-    heap,
     session: session.id,
     workingDirectory: DEFAULT_MCP_JS_WORKING_DIRECTORY,
   };

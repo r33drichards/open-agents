@@ -38,9 +38,10 @@ export class McpJsSandbox implements Sandbox {
 
   private readonly client: McpV8Client;
   private readonly baseUrl: string;
+  /** Stable session label; the server restores its latest heap on each run. */
   private readonly session?: string;
-  /** Heap snapshot key carried forward between executions. */
-  private heap?: string;
+  /** Optional explicit heap override; normally unset (session drives state). */
+  private readonly heap?: string;
 
   constructor(config: McpJsSandboxConfig) {
     this.baseUrl = config.baseUrl;
@@ -71,17 +72,15 @@ export class McpJsSandbox implements Sandbox {
     const executionTimeoutSecs =
       timeoutMs > 0 ? Math.ceil(timeoutMs / 1000) : undefined;
 
+    // No heap is passed: the server restores this session's latest heap and
+    // snapshots the result automatically, so the stable `session` label carries
+    // state forward without the client tracking content-addressed heap keys.
     const run = await this.client.runJs(command, {
       heap: this.heap,
       session: this.session,
       executionTimeoutSecs,
       signal: options?.signal,
     });
-
-    // Carry the produced heap forward so later executions see prior globals.
-    if (run.heap) {
-      this.heap = run.heap;
-    }
 
     if (run.status === "completed") {
       return {
@@ -154,9 +153,9 @@ export class McpJsSandbox implements Sandbox {
   getState(): McpJsState {
     return {
       baseUrl: this.baseUrl,
-      heap: this.heap,
       session: this.session,
       workingDirectory: this.workingDirectory,
+      ...(this.heap ? { heap: this.heap } : {}),
     };
   }
 }
