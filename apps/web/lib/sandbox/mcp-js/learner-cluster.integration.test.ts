@@ -160,6 +160,9 @@ describe.if(HAVE_BIN)("mcp-v8 learner cluster (real binary)", () => {
     const provider = new SubprocessWorkerProvider({
       binaryPath: BIN,
       storageDir: dir,
+      // Own coordinator ports so the test never adopts a dev-server coordinator.
+      coordinatorHttpPort: await freePort(),
+      coordinatorClusterPort: await freePort(),
     });
 
     const worker = await provider.ensureWorker({ sessionId: "session-xyz" });

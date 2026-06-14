@@ -110,16 +110,33 @@ export const MCP_JS_STORAGE_DIR = process.env.MCP_JS_STORAGE_DIR ?? ".mcp-js";
 export const MCP_JS_CLUSTER_HOST =
   process.env.MCP_JS_CLUSTER_HOST ?? "127.0.0.1";
 
+/**
+ * Fixed ports for the coordinator ("main") node so it can be a machine-wide
+ * singleton: any provider instance (Next/Workflow may load the module more than
+ * once) discovers the running coordinator at these ports instead of spawning a
+ * second one (which would deadlock on the coordinator's sled lock).
+ */
+export const MCP_JS_COORDINATOR_HTTP_PORT = Number(
+  process.env.MCP_JS_COORDINATOR_HTTP_PORT ?? 47600,
+);
+export const MCP_JS_COORDINATOR_CLUSTER_PORT = Number(
+  process.env.MCP_JS_COORDINATOR_CLUSTER_PORT ?? 47601,
+);
+
 /** Options for the subprocess worker provider, sourced from the environment. */
 export function getSubprocessWorkerOptions(): {
   binaryPath: string;
   storageDir: string;
   clusterHost: string;
+  coordinatorHttpPort: number;
+  coordinatorClusterPort: number;
 } {
   return {
     binaryPath: MCP_JS_BIN,
     storageDir: MCP_JS_STORAGE_DIR,
     clusterHost: MCP_JS_CLUSTER_HOST,
+    coordinatorHttpPort: MCP_JS_COORDINATOR_HTTP_PORT,
+    coordinatorClusterPort: MCP_JS_COORDINATOR_CLUSTER_PORT,
   };
 }
 

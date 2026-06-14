@@ -1,7 +1,7 @@
 import "server-only";
 
 import { spawn as nodeSpawn } from "node:child_process";
-import { mkdir } from "node:fs/promises";
+import { mkdir, rm } from "node:fs/promises";
 import { createServer } from "node:net";
 import { buildMcpV8WorkerArgs } from "./worker-args";
 import type {
@@ -41,6 +41,10 @@ export interface SubprocessWorkerProviderOptions {
   storageDir: string;
   /** Host nodes advertise/reach each other on. Defaults to 127.0.0.1. */
   clusterHost?: string;
+  /** Fixed MCP HTTP port for the coordinator (machine-singleton). */
+  coordinatorHttpPort?: number;
+  /** Fixed Raft cluster port for the coordinator (machine-singleton). */
+  coordinatorClusterPort?: number;
   /** How long to wait for a worker's HTTP API to come up. */
   readinessTimeoutMs?: number;
   /** Delay between readiness polls. */
@@ -52,6 +56,7 @@ export interface SubprocessWorkerProviderOptions {
   leavePeer?: LeavePeer;
   allocatePort?: () => Promise<number>;
   ensureStorageDir?: (dir: string) => Promise<void>;
+  removeDir?: (dir: string) => Promise<void>;
 }
 
 interface WorkerHandle {
@@ -61,14 +66,19 @@ interface WorkerHandle {
 }
 
 interface MainHandle {
-  proc: SpawnedWorkerProcess;
+  /** Set when this provider instance spawned the coordinator; absent when adopted. */
+  proc?: SpawnedWorkerProcess;
   clusterPort: number;
   baseUrl: string;
+  /** True when this instance owns (spawned) the coordinator and may stop it. */
+  owned: boolean;
 }
 
 const DEFAULT_READINESS_TIMEOUT_MS = 15_000;
 const DEFAULT_READINESS_POLL_MS = 150;
 const COORDINATOR_NODE_ID = "main";
+const DEFAULT_COORDINATOR_HTTP_PORT = 47_600;
+const DEFAULT_COORDINATOR_CLUSTER_PORT = 47_601;
 
 const defaultSpawn: WorkerSpawn = (command, args) =>
   nodeSpawn(command, args, { stdio: "inherit" });
@@ -141,6 +151,8 @@ export class SubprocessWorkerProvider implements McpJsWorkerProvider {
   private readonly binaryPath: string;
   private readonly storageDir: string;
   private readonly clusterHost: string;
+  private readonly coordinatorHttpPort: number;
+  private readonly coordinatorClusterPort: number;
   private readonly readinessTimeoutMs: number;
   private readonly readinessPollMs: number;
   private readonly spawn: WorkerSpawn;
@@ -149,6 +161,7 @@ export class SubprocessWorkerProvider implements McpJsWorkerProvider {
   private readonly leavePeer: LeavePeer;
   private readonly allocatePort: () => Promise<number>;
   private readonly ensureStorageDir: (dir: string) => Promise<void>;
+  private readonly removeDir: (dir: string) => Promise<void>;
   private readonly workers = new Map<string, WorkerHandle>();
   private main: MainHandle | undefined;
   private mainStarting: Promise<MainHandle> | undefined;
@@ -157,6 +170,10 @@ export class SubprocessWorkerProvider implements McpJsWorkerProvider {
     this.binaryPath = options.binaryPath;
     this.storageDir = options.storageDir;
     this.clusterHost = options.clusterHost ?? "127.0.0.1";
+    this.coordinatorHttpPort =
+      options.coordinatorHttpPort ?? DEFAULT_COORDINATOR_HTTP_PORT;
+    this.coordinatorClusterPort =
+      options.coordinatorClusterPort ?? DEFAULT_COORDINATOR_CLUSTER_PORT;
     this.readinessTimeoutMs =
       options.readinessTimeoutMs ?? DEFAULT_READINESS_TIMEOUT_MS;
     this.readinessPollMs = options.readinessPollMs ?? DEFAULT_READINESS_POLL_MS;
@@ -168,32 +185,61 @@ export class SubprocessWorkerProvider implements McpJsWorkerProvider {
     this.ensureStorageDir =
       options.ensureStorageDir ??
       ((dir) => mkdir(dir, { recursive: true }).then(() => undefined));
+    this.removeDir =
+      options.removeDir ?? ((dir) => rm(dir, { recursive: true, force: true }));
   }
 
-  /** Lazily start (and single-flight) the coordinator node, returning it once it is leader. */
+  /**
+   * Resolve the coordinator node, single-flighted. The coordinator is a
+   * machine-wide singleton on fixed ports: if one is already running (started
+   * by this or another module instance) we adopt it; otherwise we start it.
+   */
   private ensureMainNode(): Promise<MainHandle> {
-    if (this.main && this.main.proc.exitCode === null) {
+    if (
+      this.main?.owned &&
+      this.main.proc &&
+      this.main.proc.exitCode === null
+    ) {
       return Promise.resolve(this.main);
     }
     if (this.mainStarting) {
       return this.mainStarting;
     }
-    this.mainStarting = this.startMainNode().finally(() => {
+    this.mainStarting = this.resolveCoordinator().finally(() => {
       this.mainStarting = undefined;
     });
     return this.mainStarting;
   }
 
-  private async startMainNode(): Promise<MainHandle> {
+  private adoptCoordinator(): MainHandle {
+    this.main = {
+      clusterPort: this.coordinatorClusterPort,
+      baseUrl: `http://127.0.0.1:${this.coordinatorHttpPort}`,
+      owned: false,
+    };
+    return this.main;
+  }
+
+  private async resolveCoordinator(): Promise<MainHandle> {
+    // 1. Adopt a coordinator already running on the fixed cluster port.
+    if (await this.leaderReady(this.coordinatorClusterPort)) {
+      return this.adoptCoordinator();
+    }
+
+    // 2. Start our own coordinator on the fixed ports.
+    //
+    // Wipe the coordinator's persisted Raft state first. Its membership is
+    // ephemeral operational data — stale per-session learners (and any stale
+    // voter) accumulate across restarts and a dead voter would stall the write
+    // quorum, leaving the coordinator stuck electing. Heaps are content-
+    // addressed under `heaps/` and are NOT touched, so no durable data is lost.
+    await this.removeDir(`${this.storageDir}/sessions/${COORDINATOR_NODE_ID}`);
     await this.ensureStorageDir(`${this.storageDir}/sessions`);
     await this.ensureStorageDir(`${this.storageDir}/heaps`);
 
-    const httpPort = await this.allocatePort();
-    const clusterPort = await this.allocatePort();
-    const baseUrl = `http://127.0.0.1:${httpPort}`;
     const args = buildMcpV8WorkerArgs({
-      httpPort,
-      clusterPort,
+      httpPort: this.coordinatorHttpPort,
+      clusterPort: this.coordinatorClusterPort,
       nodeId: COORDINATOR_NODE_ID,
       storageDir: this.storageDir,
       advertiseHost: this.clusterHost,
@@ -206,12 +252,27 @@ export class SubprocessWorkerProvider implements McpJsWorkerProvider {
       }
     });
 
-    await this.waitForReady(baseUrl, proc);
-    await this.waitForLeader(clusterPort, proc);
+    try {
+      await this.waitForLeader(this.coordinatorClusterPort, proc);
+    } catch (error) {
+      // We likely lost a race: another instance holds the coordinator's sled
+      // lock, so ours exited. If that coordinator is now up, adopt it.
+      if (
+        proc.exitCode !== null &&
+        (await this.leaderReady(this.coordinatorClusterPort))
+      ) {
+        return this.adoptCoordinator();
+      }
+      throw error;
+    }
 
-    const handle: MainHandle = { proc, clusterPort, baseUrl };
-    this.main = handle;
-    return handle;
+    this.main = {
+      proc,
+      clusterPort: this.coordinatorClusterPort,
+      baseUrl: `http://127.0.0.1:${this.coordinatorHttpPort}`,
+      owned: true,
+    };
+    return this.main;
   }
 
   async ensureWorker(params: EnsureWorkerParams): Promise<McpJsWorker> {
@@ -263,7 +324,8 @@ export class SubprocessWorkerProvider implements McpJsWorkerProvider {
       return;
     }
     this.workers.delete(sessionId);
-    if (this.main && this.main.proc.exitCode === null) {
+    // Coordinator alive if owned-and-running or adopted (proc undefined).
+    if (this.main && (this.main.proc?.exitCode ?? null) === null) {
       await this.leavePeer(this.main.clusterPort, handle.nodeId);
     }
     if (handle.proc.exitCode === null) {
@@ -282,7 +344,13 @@ export class SubprocessWorkerProvider implements McpJsWorkerProvider {
       }
     }
     this.workers.clear();
-    if (this.main && this.main.proc.exitCode === null) {
+    // Only stop the coordinator if we started it; an adopted coordinator may be
+    // serving other module instances.
+    if (
+      this.main?.owned &&
+      this.main.proc &&
+      this.main.proc.exitCode === null
+    ) {
       this.main.proc.kill("SIGTERM");
     }
     this.main = undefined;
