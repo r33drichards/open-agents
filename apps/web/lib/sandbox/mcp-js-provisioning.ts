@@ -3,42 +3,57 @@ import "server-only";
 import {
   connectSandbox,
   DEFAULT_MCP_JS_WORKING_DIRECTORY,
+  type McpJsRuntimeConfig,
   type SandboxState,
 } from "@open-agents/sandbox";
 import {
   updateSessionIfNotArchived,
   type SessionRecord,
 } from "@/lib/db/sessions";
-import { MCP_JS_BASE_URL } from "@/lib/sandbox/config";
 import { getNextLifecycleVersion } from "@/lib/sandbox/lifecycle";
+import { getMcpJsWorkerProvider } from "@/lib/sandbox/mcp-js/worker-provider";
 import type { ProvisionSessionSandboxResult } from "@/lib/sandbox/provisioning";
 
 /** The mcp-js member of the {@link SandboxState} union. */
 type McpJsSandboxState = Extract<SandboxState, { type: "mcp-js" }>;
 
 /**
+ * Resolve the runtime config for a session, carrying forward whatever was
+ * persisted on a prior provision so resume re-applies identical settings.
+ */
+function getSessionRuntimeConfig(session: SessionRecord): McpJsRuntimeConfig {
+  const state = session.sandboxState;
+  if (state?.type === "mcp-js" && state.runtimeConfig) {
+    return state.runtimeConfig;
+  }
+  return {};
+}
+
+/**
  * Build the persisted state for an mcp-js sandbox.
  *
- * The only durable state is the server URL plus a stable `session` label. The
- * server restores that session's most-recent heap on each run and snapshots the
- * result automatically, so JS globals accumulate across executions without the
- * client ever tracking the (content-addressed) heap key. The session row id is
- * a natural stable label and is reused on resume.
+ * Ensures a per-session worker exists (its `baseUrl` is what the client talks
+ * to) and persists the stable `session` label plus the declarative runtime
+ * config. The worker restores that session's most-recent heap on each run and
+ * snapshots the result automatically, so JS globals accumulate across
+ * executions without the client tracking the content-addressed heap key.
  */
-export function buildMcpJsSandboxState(
+export async function buildMcpJsSandboxState(
   session: SessionRecord,
-): McpJsSandboxState {
-  if (!MCP_JS_BASE_URL) {
-    throw new Error(
-      "MCP_JS_BASE_URL must be set to provision an mcp-js sandbox.",
-    );
-  }
+): Promise<McpJsSandboxState> {
+  const runtimeConfig = getSessionRuntimeConfig(session);
+  const worker = await getMcpJsWorkerProvider().ensureWorker({
+    sessionId: session.id,
+    runtimeConfig,
+  });
 
   return {
     type: "mcp-js",
-    baseUrl: MCP_JS_BASE_URL,
+    baseUrl: worker.baseUrl,
     session: session.id,
-    workingDirectory: DEFAULT_MCP_JS_WORKING_DIRECTORY,
+    workingDirectory:
+      runtimeConfig.workingDirectory ?? DEFAULT_MCP_JS_WORKING_DIRECTORY,
+    runtimeConfig,
   };
 }
 
@@ -52,7 +67,7 @@ export async function provisionMcpJsSandbox(
   session: SessionRecord,
 ): Promise<ProvisionSessionSandboxResult> {
   const didSetupWorkspace = session.sandboxState?.type !== "mcp-js";
-  const sandboxState = buildMcpJsSandboxState(session);
+  const sandboxState = await buildMcpJsSandboxState(session);
   const sandbox = await connectSandbox(sandboxState);
 
   const updatedSession = await updateSessionIfNotArchived(session.id, {

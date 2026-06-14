@@ -4,6 +4,7 @@ import { connectSandbox } from "@open-agents/sandbox";
 import { getSessionById, updateSession } from "@/lib/db/sessions";
 import { findPullRequest, getPullRequestStatus } from "@/lib/github/pulls";
 import { getUserGitHubToken } from "@/lib/github/token";
+import { stopMcpJsWorkerForSession } from "./mcp-js/worker-teardown";
 import { canOperateOnSandbox, clearSandboxState } from "./utils";
 
 type SessionRecord = NonNullable<Awaited<ReturnType<typeof getSessionById>>>;
@@ -151,6 +152,10 @@ async function finalizeArchivedSessionSandbox(
 
     const sandbox = await connectSandbox(archivedSession.sandboxState);
     await sandbox.stop();
+    await stopMcpJsWorkerForSession({
+      sessionId,
+      sandboxState: archivedSession.sandboxState,
+    });
 
     await updateSession(sessionId, {
       snapshotUrl: null,
