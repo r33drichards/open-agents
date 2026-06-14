@@ -63,3 +63,17 @@ export const DEFAULT_WORKING_DIRECTORY = "/vercel/sandbox";
  */
 export const DEFAULT_SANDBOX_BASE_SNAPSHOT_ID =
   process.env.VERCEL_SANDBOX_BASE_SNAPSHOT_ID;
+
+/**
+ * Base URL of an mcp-js (mcp-v8) JavaScript execution server.
+ *
+ * When set, sessions are provisioned against the mcp-js runtime instead of the
+ * Vercel cloud VM. There is nothing to clone or snapshot — provisioning just
+ * mints a heap id and points at this server.
+ */
+export const MCP_JS_BASE_URL = process.env.MCP_JS_BASE_URL;
+
+/** Whether the mcp-js runtime is selected for sandbox provisioning. */
+export function isMcpJsRuntimeEnabled(): boolean {
+  return Boolean(MCP_JS_BASE_URL);
+}
