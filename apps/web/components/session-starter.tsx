@@ -28,6 +28,11 @@ import { Switch } from "./ui/switch";
 
 type SessionMode = "empty" | "repo";
 
+// Sessions run on the mcp-v8 (mcp-js) JavaScript sandbox, which has no git
+// checkout, so repo-backed sessions are disabled and chat is the only mode.
+// Flip this to re-enable the repo picker if a VM-backed sandbox is restored.
+const REPO_SESSIONS_ENABLED = false;
+
 interface SessionStarterProps {
   onSubmit: (session: {
     repoOwner?: string;
@@ -50,7 +55,7 @@ export function SessionStarter({
   lastRepo,
 }: SessionStarterProps) {
   const [mode, setMode] = useState<SessionMode>(() =>
-    lastRepo ? "repo" : "empty",
+    REPO_SESSIONS_ENABLED && lastRepo ? "repo" : "empty",
   );
   const [selectedOwner, setSelectedOwner] = useState(
     () => lastRepo?.owner ?? "",
@@ -236,37 +241,39 @@ export function SessionStarter({
       )}
     >
       <div className="flex flex-col gap-4">
-        <div className="flex rounded-lg bg-muted/70 p-1 dark:bg-white/[0.04]">
-          <button
-            type="button"
-            onClick={() => handleModeChange("empty")}
-            className={cn(
-              "flex flex-1 items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-all",
-              mode === "empty"
-                ? "border border-border/70 bg-background text-foreground shadow-sm dark:border-transparent dark:bg-white/10 dark:text-neutral-100"
-                : "text-muted-foreground hover:text-foreground dark:text-neutral-400 dark:hover:text-neutral-300",
-            )}
-          >
-            <MessageSquare className="h-3.5 w-3.5" />
-            New Chat
-          </button>
-          <button
-            type="button"
-            onClick={() => handleModeChange("repo")}
-            disabled={isRepoModeDisabled}
-            className={cn(
-              "flex flex-1 items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-all",
-              isRepoModeDisabled
-                ? "cursor-not-allowed text-muted-foreground/50 dark:text-neutral-600"
-                : mode === "repo"
+        {REPO_SESSIONS_ENABLED && (
+          <div className="flex rounded-lg bg-muted/70 p-1 dark:bg-white/[0.04]">
+            <button
+              type="button"
+              onClick={() => handleModeChange("empty")}
+              className={cn(
+                "flex flex-1 items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-all",
+                mode === "empty"
                   ? "border border-border/70 bg-background text-foreground shadow-sm dark:border-transparent dark:bg-white/10 dark:text-neutral-100"
                   : "text-muted-foreground hover:text-foreground dark:text-neutral-400 dark:hover:text-neutral-300",
-            )}
-          >
-            <GitBranch className="h-3.5 w-3.5" />
-            Start Session
-          </button>
-        </div>
+              )}
+            >
+              <MessageSquare className="h-3.5 w-3.5" />
+              New Chat
+            </button>
+            <button
+              type="button"
+              onClick={() => handleModeChange("repo")}
+              disabled={isRepoModeDisabled}
+              className={cn(
+                "flex flex-1 items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-all",
+                isRepoModeDisabled
+                  ? "cursor-not-allowed text-muted-foreground/50 dark:text-neutral-600"
+                  : mode === "repo"
+                    ? "border border-border/70 bg-background text-foreground shadow-sm dark:border-transparent dark:bg-white/10 dark:text-neutral-100"
+                    : "text-muted-foreground hover:text-foreground dark:text-neutral-400 dark:hover:text-neutral-300",
+              )}
+            >
+              <GitBranch className="h-3.5 w-3.5" />
+              Start Session
+            </button>
+          </div>
+        )}
 
         {mode === "repo" && (
           <div className="flex flex-col gap-3">

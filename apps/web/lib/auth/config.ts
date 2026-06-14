@@ -135,6 +135,14 @@ export const auth = betterAuth({
     },
   },
 
+  emailAndPassword: {
+    enabled: true,
+    // Local/self-hosted flow: no email verification step. Better Auth only
+    // sends verification mail when emailVerification.sendVerificationEmail is
+    // configured, which it is not, so sign-up logs the user in immediately.
+    requireEmailVerification: false,
+  },
+
   session: {
     modelName: "auth_sessions",
   },

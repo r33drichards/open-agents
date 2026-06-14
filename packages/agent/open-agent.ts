@@ -2,26 +2,35 @@ import type { SandboxState } from "@open-agents/sandbox";
 import { stepCountIs, ToolLoopAgent, type ToolSet } from "ai";
 import { z } from "zod";
 import { addCacheControl } from "./context-management";
+import { getToolboxTools } from "./mcp";
 import {
   type GatewayModelId,
   gateway,
   type ProviderOptionsByProvider,
 } from "./models";
 
+import type { ScheduledTaskStore } from "./scheduling/store";
+import type { UserSkillStore } from "./skills/authoring";
 import type { SkillMetadata } from "./skills/types";
 import { buildSystemPrompt } from "./system-prompt";
 import {
   askUserQuestionTool,
   bashTool,
+  cronCreateTool,
+  cronDeleteTool,
+  cronListTool,
+  deleteSkillTool,
   editFileTool,
   globTool,
   grepTool,
   readFileTool,
+  readSkillTool,
   skillTool,
   taskTool,
   todoWriteTool,
   webFetchTool,
   writeFileTool,
+  writeSkillTool,
 } from "./tools";
 
 export interface AgentModelSelection {
@@ -44,6 +53,11 @@ const callOptionsSchema = z.object({
   subagentModel: z.custom<OpenAgentModelInput>().optional(),
   customInstructions: z.string().optional(),
   skills: z.custom<SkillMetadata[]>().optional(),
+  // Durable store for user-authored skills. Constructed fresh inside the host
+  // app's agent step and passed in-process (never serialized).
+  skillStore: z.custom<UserSkillStore>().optional(),
+  // Durable store for scheduled tasks. Same in-process injection as skillStore.
+  scheduledTaskStore: z.custom<ScheduledTaskStore>().optional(),
 });
 
 export type OpenAgentCallOptions = z.infer<typeof callOptionsSchema>;
@@ -73,6 +87,30 @@ const tools = {
   task: taskTool,
   ask_user_question: askUserQuestionTool,
   skill: skillTool,
+  write_skill: writeSkillTool,
+  read_skill: readSkillTool,
+  delete_skill: deleteSkillTool,
+  cron_create: cronCreateTool,
+  cron_list: cronListTool,
+  cron_delete: cronDeleteTool,
+  web_fetch: webFetchTool,
+} satisfies ToolSet;
+
+// For the JS-only mcp-v8 sandbox, the file/shell tools are replaced by the
+// toolbox's own tools (run_js, language runners) discovered over MCP. Only the
+// sandbox-agnostic tools remain built in. (`task` is omitted for now because
+// subagents still target the shell/file Sandbox interface.) Skill authoring is
+// DB-backed, so it works here too.
+const mcpJsMetaTools = {
+  todo_write: todoWriteTool,
+  ask_user_question: askUserQuestionTool,
+  skill: skillTool,
+  write_skill: writeSkillTool,
+  read_skill: readSkillTool,
+  delete_skill: deleteSkillTool,
+  cron_create: cronCreateTool,
+  cron_list: cronListTool,
+  cron_delete: cronDeleteTool,
   web_fetch: webFetchTool,
 } satisfies ToolSet;
 
@@ -90,7 +128,7 @@ export const openAgent = new ToolLoopAgent({
       }),
     };
   },
-  prepareCall: ({ options, ...settings }) => {
+  prepareCall: async ({ options, ...settings }) => {
     if (!options) {
       throw new Error("Open Agent requires call options with sandbox.");
     }
@@ -113,22 +151,46 @@ export const openAgent = new ToolLoopAgent({
       : undefined;
     const customInstructions = options.customInstructions;
     const sandbox = options.sandbox;
+    const sandboxState = sandbox.state;
     const skills = options.skills ?? [];
+
+    // For an mcp-js sandbox, discover the toolbox's tools over MCP and use them
+    // in place of the built-in shell/file tools. Other sandbox types keep the
+    // built-in toolset. The cast acknowledges that prepareCall swaps the
+    // runtime toolset, which the static `tools` type cannot express.
+    let toolSet: typeof tools = settings.tools ?? tools;
+    let mcpInstructions: string | undefined;
+    let toolEnvironment: "cloud" | "js" = "cloud";
+
+    if (sandboxState.type === "mcp-js") {
+      const { tools: mcpTools, instructions } = await getToolboxTools(
+        sandboxState.baseUrl,
+      );
+      toolSet = { ...mcpJsMetaTools, ...mcpTools } as unknown as typeof tools;
+      mcpInstructions = instructions;
+      toolEnvironment = "js";
+    }
+
+    const environmentDetails =
+      [sandbox.environmentDetails, mcpInstructions]
+        .filter(Boolean)
+        .join("\n\n") || undefined;
 
     const instructions = buildSystemPrompt({
       cwd: sandbox.workingDirectory,
       currentBranch: sandbox.currentBranch,
       customInstructions,
-      environmentDetails: sandbox.environmentDetails,
+      environmentDetails,
       skills,
       modelId: mainSelection.id,
+      toolEnvironment,
     });
 
     return {
       ...settings,
       model: callModel,
       tools: addCacheControl({
-        tools: settings.tools ?? tools,
+        tools: toolSet,
         model: callModel,
       }),
       instructions,
@@ -137,6 +199,8 @@ export const openAgent = new ToolLoopAgent({
         skills,
         model: callModel,
         subagentModel,
+        skillStore: options.skillStore,
+        scheduledTaskStore: options.scheduledTaskStore,
       },
     };
   },

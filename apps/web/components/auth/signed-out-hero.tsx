@@ -1,7 +1,9 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { SignInButton } from "@/components/auth/sign-in-button";
+import { Button } from "@/components/ui/button";
 import { AppMockup } from "@/components/landing/app-mockup";
 import { GitHubLink } from "@/components/landing/github-link";
 import { LandingBento } from "@/components/landing/bento";
@@ -51,6 +53,9 @@ export function SignedOutHero() {
               className="mt-6 flex items-center gap-2 sm:mt-8"
             >
               <SignInButton size="lg" callbackUrl="/sessions" />
+              <Button asChild size="lg" variant="outline">
+                <Link href="/login?next=/sessions">Email sign-in</Link>
+              </Button>
               <GitHubLink>Open Source</GitHubLink>
             </div>
           </div>

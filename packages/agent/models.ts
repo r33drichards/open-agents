@@ -6,6 +6,7 @@ import {
   type JSONValue,
   type LanguageModel,
 } from "ai";
+import { createAzure } from "@ai-sdk/azure";
 import type { AnthropicLanguageModelOptions } from "@ai-sdk/anthropic";
 import type { OpenAIResponsesProviderOptions } from "@ai-sdk/openai";
 
@@ -169,11 +170,94 @@ export function getProviderOptionsForModel(
   return providerOptions;
 }
 
+/**
+ * Optional Azure OpenAI override.
+ *
+ * When configured, every model resolves to a single Azure deployment (e.g.
+ * `gpt-5.4`) via the Responses API, regardless of the requested gateway model
+ * id. This lets a self-hosted deployment run entirely on Azure OpenAI creds
+ * without a Vercel AI Gateway key. When the env is absent, the Vercel Gateway
+ * path below is used unchanged.
+ */
+interface AzureModelConfig {
+  apiKey: string;
+  deployment: string;
+  resourceName?: string;
+  baseURL?: string;
+  apiVersion?: string;
+}
+
+function readAzureConfig(): AzureModelConfig | null {
+  const apiKey = process.env.AZURE_OPENAI_API_KEY;
+  const deployment = process.env.AZURE_OPENAI_DEPLOYMENT;
+  const resourceName = process.env.AZURE_OPENAI_RESOURCE_NAME;
+  const baseURL = process.env.AZURE_OPENAI_BASE_URL;
+
+  if (!(apiKey && deployment) || !(resourceName || baseURL)) {
+    return null;
+  }
+
+  return {
+    apiKey,
+    deployment,
+    resourceName,
+    baseURL,
+    apiVersion: process.env.AZURE_OPENAI_API_VERSION,
+  };
+}
+
+/** Whether the Azure OpenAI override is active. */
+export function isAzureModelEnabled(): boolean {
+  return readAzureConfig() !== null;
+}
+
+function createAzureModel(
+  config: AzureModelConfig,
+  providerOptionsOverrides?: ProviderOptionsByProvider,
+): LanguageModel {
+  const azure = createAzure({
+    apiKey: config.apiKey,
+    ...(config.baseURL
+      ? { baseURL: config.baseURL }
+      : { resourceName: config.resourceName }),
+    ...(config.apiVersion ? { apiVersion: config.apiVersion } : {}),
+  });
+
+  let model: LanguageModel = azure.responses(config.deployment);
+
+  // Azure's Responses model is the OpenAI Responses model under the hood and
+  // reads provider options under the `openai` key. Reuse the GPT-5 defaults
+  // (store:false, encrypted reasoning, low verbosity) by computing options as
+  // if this were an `openai/<deployment>` model id.
+  const providerOptions = getProviderOptionsForModel(
+    `openai/${config.deployment}`,
+    providerOptionsOverrides,
+  );
+
+  if (Object.keys(providerOptions).length > 0) {
+    model = wrapLanguageModel({
+      model,
+      middleware: defaultSettingsMiddleware({
+        settings: { providerOptions },
+      }),
+    });
+  }
+
+  return model;
+}
+
 export function gateway(
   modelId: GatewayModelId,
   options: GatewayOptions = {},
 ): LanguageModel {
   const { config, providerOptionsOverrides, appName, appUrl } = options;
+
+  // Azure OpenAI override: collapse all model ids onto the configured
+  // deployment when Azure creds are present.
+  const azureConfig = readAzureConfig();
+  if (azureConfig) {
+    return createAzureModel(azureConfig, providerOptionsOverrides);
+  }
 
   const attributionHeaders = {
     "http-referer": appUrl ?? "https://open-agents.dev",

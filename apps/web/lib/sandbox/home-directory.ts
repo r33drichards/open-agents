@@ -12,11 +12,17 @@ export function shellEscape(value: string): string {
 export async function resolveSandboxHomeDirectory(
   sandbox: Sandbox,
 ): Promise<string> {
-  const result = await sandbox.exec(
-    'printf %s "$HOME"',
-    sandbox.workingDirectory,
-    HOME_RESOLUTION_TIMEOUT_MS,
-  );
-  const homeDirectory = result.success ? result.stdout.trim() : "";
-  return homeDirectory || DEFAULT_HOME_DIRECTORY;
+  try {
+    const result = await sandbox.exec(
+      'printf %s "$HOME"',
+      sandbox.workingDirectory,
+      HOME_RESOLUTION_TIMEOUT_MS,
+    );
+    const homeDirectory = result.success ? result.stdout.trim() : "";
+    return homeDirectory || DEFAULT_HOME_DIRECTORY;
+  } catch {
+    // Some sandbox types (e.g. mcp-js) don't support shell commands and may
+    // throw instead of returning a failed ExecResult. Fall back gracefully.
+    return DEFAULT_HOME_DIRECTORY;
+  }
 }

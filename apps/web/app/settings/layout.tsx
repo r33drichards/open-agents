@@ -3,6 +3,7 @@
 import {
   ArrowLeft,
   Cable,
+  CalendarClock,
   LogOut,
   Menu,
   Settings as SettingsIcon,
@@ -29,6 +30,7 @@ import { AccountsSectionSkeleton } from "./accounts-section";
 import { LeaderboardSectionSkeleton } from "./leaderboard-section";
 import { ModelVariantsSectionSkeleton } from "./model-variants-section";
 import { PreferencesSectionSkeleton } from "./preferences-section";
+import { ScheduledTasksSectionSkeleton } from "./scheduled-tasks-section";
 
 /** Skeleton shown while auth is loading for the combined profile page */
 function ProfilePageSkeleton() {
@@ -88,6 +90,12 @@ const baseSidebarItems = [
     label: "Models",
     href: "/settings/models",
     icon: SlidersHorizontal,
+  },
+  {
+    id: "scheduled-tasks",
+    label: "Scheduled tasks",
+    href: "/settings/scheduled-tasks",
+    icon: CalendarClock,
   },
   {
     id: "leaderboard",
@@ -243,6 +251,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       <PreferencesSectionSkeleton />
     ) : activeItem?.id === "models" ? (
       <ModelVariantsSectionSkeleton />
+    ) : activeItem?.id === "scheduled-tasks" ? (
+      <ScheduledTasksSectionSkeleton />
     ) : activeItem?.id === "leaderboard" ? (
       <LeaderboardSectionSkeleton />
     ) : (

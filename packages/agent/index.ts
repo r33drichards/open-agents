@@ -6,7 +6,16 @@ export type {
   OpenAgentModelInput,
 } from "./open-agent";
 export { defaultModel, defaultModelLabel, openAgent } from "./open-agent";
+// Scheduled-tasks exports
+export type {
+  CreateScheduledTaskInput,
+  ScheduledTaskFireMode,
+  ScheduledTaskRecord,
+  ScheduledTaskStore,
+  ScheduleKind,
+} from "./scheduling/store";
 // Skills exports
+export type { UserSkillRecord, UserSkillStore } from "./skills/authoring";
 export { discoverSkills, parseSkillFrontmatter } from "./skills/discovery";
 export { extractSkillBody, substituteArguments } from "./skills/loader";
 export type {

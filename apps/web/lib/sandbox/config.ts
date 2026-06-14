@@ -65,13 +65,23 @@ export const DEFAULT_SANDBOX_BASE_SNAPSHOT_ID =
   process.env.VERCEL_SANDBOX_BASE_SNAPSHOT_ID;
 
 /**
+ * Default mcp-js (mcp-v8) server used when `MCP_JS_BASE_URL` is unset.
+ *
+ * The mcp-js runtime is the only sandbox type, so a default keeps it working
+ * out of the box; override with `MCP_JS_BASE_URL` to point at another toolbox.
+ */
+const DEFAULT_MCP_JS_BASE_URL =
+  "https://toolbox-production-e539.up.railway.app";
+
+/**
  * Base URL of an mcp-js (mcp-v8) JavaScript execution server.
  *
- * When set, sessions are provisioned against the mcp-js runtime instead of the
- * Vercel cloud VM. There is nothing to clone or snapshot — provisioning just
- * mints a heap id and points at this server.
+ * Sessions are always provisioned against this runtime (the agent connects to
+ * it over MCP and uses its tools); there is nothing to clone or snapshot —
+ * provisioning just points at this server.
  */
-export const MCP_JS_BASE_URL = process.env.MCP_JS_BASE_URL;
+export const MCP_JS_BASE_URL =
+  process.env.MCP_JS_BASE_URL ?? DEFAULT_MCP_JS_BASE_URL;
 
 /**
  * How per-session mcp-js workers are spawned.

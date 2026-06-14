@@ -2,6 +2,7 @@ import type { SandboxState } from "@open-agents/sandbox";
 import type { LanguageModel } from "ai";
 import { z } from "zod";
 import type { AgentSandboxContext } from "./open-agent";
+import type { UserSkillStore } from "./skills/authoring";
 import type { SkillMetadata } from "./skills/types";
 
 export const todoStatusSchema = z.enum(["pending", "in_progress", "completed"]);
@@ -21,6 +22,8 @@ export interface AgentContext {
   skills?: SkillMetadata[];
   model: LanguageModel;
   subagentModel?: LanguageModel;
+  /** Durable store for user-authored skills (injected by the host app). */
+  skillStore?: UserSkillStore;
 }
 
 export interface SandboxExecutionContext {

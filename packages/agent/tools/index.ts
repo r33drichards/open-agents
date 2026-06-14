@@ -16,4 +16,10 @@ export {
   type AskUserQuestionInput,
 } from "./ask-user-question";
 export { skillTool, type SkillToolInput } from "./skill";
+export {
+  deleteSkillTool,
+  readSkillTool,
+  writeSkillTool,
+} from "./skill-authoring";
+export { cronCreateTool, cronDeleteTool, cronListTool } from "./cron";
 export { webFetchTool } from "./fetch";

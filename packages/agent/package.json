@@ -12,7 +12,9 @@
   },
   "dependencies": {
     "@ai-sdk/anthropic": "catalog:",
+    "@ai-sdk/azure": "catalog:",
     "@ai-sdk/openai": "catalog:",
+    "@modelcontextprotocol/sdk": "catalog:",
     "@open-agents/sandbox": "workspace:*",
     "ai": "catalog:",
     "zod": "catalog:"
