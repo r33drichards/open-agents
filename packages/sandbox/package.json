@@ -12,13 +12,16 @@
     "./vercel/index.js": "./vercel/index.ts",
     "./vercel/snapshot-refresh.js": "./vercel/snapshot-refresh.ts",
     "./vercel/sandbox.js": "./vercel/sandbox.ts",
-    "./vercel/config.js": "./vercel/config.ts"
+    "./vercel/config.js": "./vercel/config.ts",
+    "./mcp-js": "./mcp-js/index.ts",
+    "./mcp-js/index.js": "./mcp-js/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@vercel/sandbox": "2.0.0-beta.11"
+    "@vercel/sandbox": "2.0.0-beta.11",
+    "openapi-fetch": "^0.13.4"
   },
   "devDependencies": {
     "@open-agents/tsconfig": "workspace:*",

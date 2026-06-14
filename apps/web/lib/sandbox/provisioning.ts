@@ -4,6 +4,7 @@ import {
   connectSandbox,
   type Sandbox,
   type SandboxState,
+  type VercelState,
 } from "@open-agents/sandbox";
 import {
   getSessionById,
@@ -27,7 +28,9 @@ import {
   DEFAULT_SANDBOX_PORTS,
   DEFAULT_SANDBOX_TIMEOUT_MS,
   DEFAULT_SANDBOX_VCPUS,
+  isMcpJsRuntimeEnabled,
 } from "@/lib/sandbox/config";
+import { provisionMcpJsSandbox } from "@/lib/sandbox/mcp-js-provisioning";
 import {
   buildActiveLifecycleUpdate,
   getNextLifecycleVersion,
@@ -40,6 +43,9 @@ import {
 } from "@/lib/sandbox/utils";
 import { installGlobalSkills } from "@/lib/skills/global-skill-installer";
 import { eq } from "drizzle-orm";
+
+/** The Vercel member of the {@link SandboxState} union. */
+type VercelSandboxState = Extract<SandboxState, { type: "vercel" }>;
 
 type UserRecord = {
   id: string;
@@ -64,7 +70,7 @@ export class SessionArchivedDuringProvisioningError extends Error {
   }
 }
 
-function isSandboxState(value: unknown): value is SandboxState {
+function isSandboxState(value: unknown): value is VercelSandboxState {
   return (
     typeof value === "object" &&
     value !== null &&
@@ -88,7 +94,7 @@ async function getUserById(userId: string): Promise<UserRecord | null> {
   return user ?? null;
 }
 
-function buildSandboxSource(session: SessionRecord): SandboxState["source"] {
+function buildSandboxSource(session: SessionRecord): VercelState["source"] {
   if (!session.cloneUrl) {
     return undefined;
   }
@@ -104,15 +110,15 @@ function buildSandboxSource(session: SessionRecord): SandboxState["source"] {
   };
 }
 
-function buildSandboxState(session: SessionRecord): SandboxState {
+function buildSandboxState(session: SessionRecord): VercelSandboxState {
   const existingState = session.sandboxState;
   const sandboxName =
     getResumableSandboxName(existingState) ?? getSessionSandboxName(session.id);
   const source = buildSandboxSource(session);
 
   return {
-    type: "vercel",
     ...(isSandboxState(existingState) ? existingState : {}),
+    type: "vercel",
     sandboxName,
     ...(source ? { source } : {}),
   };
@@ -217,6 +223,12 @@ export async function provisionSessionSandbox(params: {
   }
   if (session.status === "archived") {
     throw new Error("Session is archived");
+  }
+
+  // The mcp-js runtime has no VM to clone/snapshot; provisioning just mints a
+  // heap id and points at the configured server.
+  if (isMcpJsRuntimeEnabled()) {
+    return provisionMcpJsSandbox(session);
   }
 
   const didSetupWorkspace = !isSandboxActive(session.sandboxState);

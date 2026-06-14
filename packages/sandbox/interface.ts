@@ -2,8 +2,11 @@ import type { Dirent } from "fs";
 
 /**
  * The type of sandbox environment.
+ *
+ * - `cloud`: a full VM/microVM with a shell and filesystem (e.g. Vercel).
+ * - `js`: a JS-execution-only runtime (mcp-js / mcp-v8); no shell or filesystem.
  */
-export type SandboxType = "cloud";
+export type SandboxType = "cloud" | "js";
 
 /**
  * Result of a successful snapshot operation.

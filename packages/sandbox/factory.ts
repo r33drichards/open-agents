@@ -1,4 +1,6 @@
 import type { Sandbox, SandboxHooks } from "./interface.ts";
+import { connectMcpJs } from "./mcp-js/connect.ts";
+import type { McpJsState } from "./mcp-js/state.ts";
 import type { SandboxStatus } from "./types.ts";
 import { connectVercel } from "./vercel/connect.ts";
 import type { VercelState } from "./vercel/state.ts";
@@ -10,7 +12,9 @@ export type { SandboxStatus };
  * Unified sandbox state type.
  * Use `type` discriminator to determine which sandbox implementation to use.
  */
-export type SandboxState = { type: "vercel" } & VercelState;
+export type SandboxState =
+  | ({ type: "vercel" } & VercelState)
+  | ({ type: "mcp-js" } & McpJsState);
 
 /**
  * Base connect options for all sandbox types.
@@ -50,12 +54,15 @@ export interface ConnectOptions {
  * Configuration for connecting to a sandbox.
  */
 export type SandboxConnectConfig = {
-  state: { type: "vercel" } & VercelState;
+  state: SandboxState;
   options?: ConnectOptions;
 };
 
 /**
  * Connect to a sandbox based on the provided configuration.
+ *
+ * Dispatches to the implementation indicated by the state's `type`
+ * discriminator (`vercel` for the cloud VM, `mcp-js` for the V8 JS runtime).
  */
 export async function connectSandbox(
   configOrState: SandboxConnectConfig | SandboxState,
@@ -67,11 +74,15 @@ export async function connectSandbox(
     typeof configOrState.state === "object" &&
     "type" in configOrState.state;
 
-  if (isNewApi) {
-    const config = configOrState as SandboxConnectConfig;
-    return connectVercel(config.state, config.options);
-  }
+  const state = (
+    isNewApi ? configOrState.state : configOrState
+  ) as SandboxState;
+  const options = isNewApi ? configOrState.options : legacyOptions;
 
-  const state = configOrState as SandboxState;
-  return connectVercel(state, legacyOptions);
+  switch (state.type) {
+    case "mcp-js":
+      return connectMcpJs(state, options);
+    default:
+      return connectVercel(state, options);
+  }
 }

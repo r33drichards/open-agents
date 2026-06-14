@@ -47,3 +47,18 @@ export {
   type VercelSandboxConnectConfig,
   type VercelState,
 } from "./vercel/index.ts";
+
+// mcp-js (mcp-v8)
+export {
+  connectMcpJs,
+  createMcpV8Client,
+  DEFAULT_MCP_JS_WORKING_DIRECTORY,
+  McpJsSandbox,
+  type McpJsSandboxConfig,
+  type McpJsState,
+  McpJsUnsupportedOperationError,
+  McpV8Client,
+  McpV8Error,
+  type RunJsOptions,
+  type RunJsResult,
+} from "./mcp-js/index.ts";
