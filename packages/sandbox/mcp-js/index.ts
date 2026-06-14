@@ -6,6 +6,11 @@ export {
   type McpJsSandboxConfig,
 } from "./config.ts";
 export type { McpJsState } from "./state.ts";
+export type {
+  McpJsCapabilities,
+  McpJsCapabilityPolicy,
+  McpJsRuntimeConfig,
+} from "./runtime-config.ts";
 export {
   createMcpV8Client,
   McpV8Client,

@@ -73,7 +73,38 @@ export const DEFAULT_SANDBOX_BASE_SNAPSHOT_ID =
  */
 export const MCP_JS_BASE_URL = process.env.MCP_JS_BASE_URL;
 
+/**
+ * How per-session mcp-js workers are spawned.
+ *
+ * - `shared`: every session uses the single {@link MCP_JS_BASE_URL} server
+ *   (legacy behavior / fallback).
+ * - `subprocess`: each session gets a local `mcp-v8` child process sharing an
+ *   on-disk content-addressed store (local dev / self-hosted Node).
+ */
+export type McpJsWorkerMode = "shared" | "subprocess";
+
+/** Resolve the configured worker mode (defaults to `shared`). */
+export function getMcpJsWorkerMode(): McpJsWorkerMode {
+  return process.env.MCP_JS_WORKER_MODE?.toLowerCase() === "subprocess"
+    ? "subprocess"
+    : "shared";
+}
+
+/** Path to (or name of) the `mcp-v8` binary used by the subprocess provider. */
+export const MCP_JS_BIN = process.env.MCP_JS_BIN ?? "mcp-v8";
+
+/** Shared content-addressed store directory for subprocess-mode workers. */
+export const MCP_JS_STORAGE_DIR = process.env.MCP_JS_STORAGE_DIR ?? ".mcp-js";
+
+/** Options for the subprocess worker provider, sourced from the environment. */
+export function getSubprocessWorkerOptions(): {
+  binaryPath: string;
+  storageDir: string;
+} {
+  return { binaryPath: MCP_JS_BIN, storageDir: MCP_JS_STORAGE_DIR };
+}
+
 /** Whether the mcp-js runtime is selected for sandbox provisioning. */
 export function isMcpJsRuntimeEnabled(): boolean {
-  return Boolean(MCP_JS_BASE_URL);
+  return Boolean(MCP_JS_BASE_URL) || getMcpJsWorkerMode() === "subprocess";
 }

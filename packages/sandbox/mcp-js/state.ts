@@ -8,6 +8,8 @@
  * needs to persist the unchanging `session` — never the content-addressed heap
  * key, which changes on every run.
  */
+import type { McpJsRuntimeConfig } from "./runtime-config.ts";
+
 export interface McpJsState {
   /** Base URL of the mcp-v8 server, e.g. `https://mcp-v8.internal:8080`. */
   baseUrl: string;
@@ -24,4 +26,9 @@ export interface McpJsState {
   heap?: string;
   /** Working directory reported to the agent (nominal; e.g. the scratch dir). */
   workingDirectory?: string;
+  /**
+   * Declarative per-session worker runtime config. Persisted so a resumed
+   * session re-spawns its worker with identical capabilities/policies.
+   */
+  runtimeConfig?: McpJsRuntimeConfig;
 }

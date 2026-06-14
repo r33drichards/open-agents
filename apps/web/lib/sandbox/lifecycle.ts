@@ -10,6 +10,7 @@ import {
   SANDBOX_EXPIRES_BUFFER_MS,
   SANDBOX_INACTIVITY_TIMEOUT_MS,
 } from "./config";
+import { stopMcpJsWorkerForSession } from "./mcp-js/worker-teardown";
 import {
   canOperateOnSandbox,
   clearSandboxState,
@@ -239,6 +240,7 @@ export async function evaluateSandboxLifecycle(
     }
 
     await sandbox.stop();
+    await stopMcpJsWorkerForSession({ sessionId, sandboxState });
 
     const clearedState = clearSandboxState(sandboxState);
     await updateSession(sessionId, {

@@ -1,6 +1,21 @@
 # Plan: per-session isolated mcp-js workers over shared content-addressed storage
 
-Status: **proposed** (awaiting approval before implementation)
+Status: **in progress** — subprocess provider first.
+
+## Decisions (2026-06-14)
+
+1. **Ship the subprocess provider first.** Get isolated per-session compute
+   working with local child-process workers before any cluster work; the Vercel
+   ↔ cluster reachability question is punted until then.
+2. **Production k8s via [kubernetes-sigs/agent-sandbox](https://github.com/kubernetes-sigs/agent-sandbox).**
+   The `k8s` provider will create an agent-sandbox `Sandbox` resource per
+   session rather than hand-rolling Deployments/Services.
+3. **Per-session declarative runtime config.** Session creation accepts a
+   declarative config that configures *that session's* mcp-js worker runtime
+   (capabilities / OPA policies, heap caps, working dir). The config is persisted
+   in the sandbox state and re-applied on resume. Storage stays shared — **all
+   sessions share one S3 bucket** — so isolation is per-session *policy* over a
+   common content-addressed store.
 
 ## Goal
 
@@ -102,11 +117,41 @@ for free (e.g. forking a chat could branch the fs label).
 
 ## Component design
 
+### 0. Per-session runtime config (`McpJsRuntimeConfig`)
+
+A declarative description of a session's worker runtime, persisted in the
+sandbox state and re-applied on resume. Defined as a plain interface in the
+sandbox package (`packages/sandbox/mcp-js/runtime-config.ts`, no extra deps) and
+validated with a Zod schema in the web app at session-creation time:
+
+```ts
+export interface McpJsRuntimeConfig {
+  heapMemoryMaxMb?: number;          // per-exec V8 heap cap
+  workingDirectory?: string;         // nominal cwd reported to the agent
+  capabilities?: {                   // OFF by default (secure-by-default)
+    fetch?: McpJsCapabilityPolicy;
+    filesystem?: McpJsCapabilityPolicy;
+    subprocess?: McpJsCapabilityPolicy;
+  };
+}
+export interface McpJsCapabilityPolicy {
+  enabled?: boolean;                 // allow at all
+  opaUrls?: string[];                // OPA/Rego policy servers, per-call
+}
+```
+
+The worker provider translates this into mcp-v8 launch flags (e.g.
+`--policies-json` for capabilities) via a pure `worker-args.ts` helper.
+
 ### 1. `McpJsWorkerProvider` abstraction (`apps/web`)
 
 New module `apps/web/lib/sandbox/mcp-js/worker-provider.ts`:
 
 ```ts
+export interface EnsureWorkerParams {
+  sessionId: string;
+  runtimeConfig?: McpJsRuntimeConfig;
+}
 export interface McpJsWorker {
   /** Base URL the sandbox client should hit for this session's worker. */
   baseUrl: string;
@@ -114,7 +159,7 @@ export interface McpJsWorker {
 
 export interface McpJsWorkerProvider {
   /** Idempotently ensure a worker exists for the session; return its URL. */
-  ensureWorker(sessionId: string): Promise<McpJsWorker>;
+  ensureWorker(params: EnsureWorkerParams): Promise<McpJsWorker>;
   /** Tear down the session's worker (idempotent / no-op if absent). */
   stopWorker(sessionId: string): Promise<void>;
 }
@@ -143,20 +188,19 @@ duplicating.
 - `stopWorker` sends SIGTERM and removes the registry entry.
 - Mainly for `pnpm web` local development.
 
-#### 1b. `K8sWorkerProvider` (`k8s-worker-provider.ts`)
+#### 1b. `K8sWorkerProvider` (`k8s-worker-provider.ts`) — later
 
-- Uses `@kubernetes/client-node` against the configured cluster.
-- Per session creates a **Deployment + Service** (or a long-lived Pod) named
-  deterministically from `sessionId` (e.g. `mcp-js-<short-hash>`), with the
-  mcp-v8 container configured for the **S3** shared backend (bucket/prefix via
-  env). `ensureWorker` returns the in-cluster Service URL
-  (`http://mcp-js-<hash>.<ns>.svc:3000`); if the Service already exists it just
-  returns the URL.
-- `stopWorker` deletes the Deployment + Service.
+- Creates a **[kubernetes-sigs/agent-sandbox](https://github.com/kubernetes-sigs/agent-sandbox)
+  `Sandbox` custom resource** per session (not hand-rolled Deployments), named
+  deterministically from `sessionId` (e.g. `mcp-js-<short-hash>`), running the
+  mcp-v8 image configured for the **shared S3 backend** plus that session's
+  declarative runtime config. `ensureWorker` returns the in-cluster Service URL;
+  if the resource already exists it just returns the URL.
+- `stopWorker` deletes the `Sandbox` resource.
 - Config via env: `MCP_JS_K8S_NAMESPACE`, `MCP_JS_K8S_IMAGE`,
-  `MCP_JS_S3_BUCKET`, `MCP_JS_S3_PREFIX`, resource requests/limits, and either
-  in-cluster service-account or a kubeconfig secret (so the Vercel web app can
-  reach the cluster API).
+  `MCP_JS_S3_BUCKET`, `MCP_JS_S3_PREFIX`, and cluster credentials (in-cluster
+  service-account or a kubeconfig secret so the web app can reach the API).
+- Punted until the subprocess path is working end-to-end (Decision 1).
 
 ### 2. Sandbox package wiring (`packages/sandbox/mcp-js`)
 
