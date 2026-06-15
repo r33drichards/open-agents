@@ -123,7 +123,15 @@ async function checkRedisRateLimit(
 }
 
 function rateLimitUnavailableResponse(): Response | null {
-  if (process.env.NODE_ENV !== "production") {
+  // Skip the limiter (allow the request) outside production, or when explicitly
+  // opted in via `RATE_LIMIT_DISABLED`. The latter exists only for running a
+  // local production build (`next start`) without Redis/KV configured, where
+  // the limiter would otherwise hard-fail every request with 503. Never set in
+  // a real deployment.
+  if (
+    process.env.NODE_ENV !== "production" ||
+    process.env.RATE_LIMIT_DISABLED === "true"
+  ) {
     return null;
   }
 

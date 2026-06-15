@@ -20,7 +20,14 @@ export const botIdConfig = {
 };
 
 export async function checkBotProtection() {
-  if (process.env.NODE_ENV !== "production") {
+  // Bypass in non-production, or when explicitly opted in via `BOTID_DISABLED`.
+  // The latter exists only for running a local production build (`next start`)
+  // where Vercel's bot-protection API and OIDC token are unavailable, so
+  // `checkBotId()` throws. This must never be set in a real deployment.
+  if (
+    process.env.NODE_ENV !== "production" ||
+    process.env.BOTID_DISABLED === "true"
+  ) {
     return {
       isHuman: true,
       isBot: false,
