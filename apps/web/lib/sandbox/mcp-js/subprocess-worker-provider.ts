@@ -3,7 +3,30 @@ import "server-only";
 import { spawn as nodeSpawn } from "node:child_process";
 import { mkdir, rm } from "node:fs/promises";
 import { createServer } from "node:net";
+import { join } from "node:path";
+import type { McpJsFsSnapshotConfig } from "@/lib/sandbox/config";
 import { buildMcpV8WorkerArgs } from "./worker-args";
+
+/**
+ * Resolve the filesystem policy path the mcp-v8 worker reads via `file://`.
+ * The policy lives in the repo and is read by the external worker process, so
+ * it must be a real on-disk path (not bundled into Next). Resolved here (a
+ * server-only module that may use Node APIs) rather than in the
+ * workflow-imported config module.
+ */
+function resolveFsSnapshots(
+  fs: McpJsFsSnapshotConfig | undefined,
+): McpJsFsSnapshotConfig | undefined {
+  if (!fs?.enabled) {
+    return fs;
+  }
+  return {
+    ...fs,
+    policyFilePath:
+      fs.policyFilePath ??
+      join(process.cwd(), "lib/sandbox/mcp-js/fs-policy.rego"),
+  };
+}
 import type {
   EnsureWorkerParams,
   McpJsWorker,
@@ -45,6 +68,8 @@ export interface SubprocessWorkerProviderOptions {
   coordinatorHttpPort?: number;
   /** Fixed Raft cluster port for the coordinator (machine-singleton). */
   coordinatorClusterPort?: number;
+  /** Per-session content-addressed filesystem snapshot config (optional). */
+  fsSnapshots?: McpJsFsSnapshotConfig;
   /** How long to wait for a worker's HTTP API to come up. */
   readinessTimeoutMs?: number;
   /** Delay between readiness polls. */
@@ -153,6 +178,7 @@ export class SubprocessWorkerProvider implements McpJsWorkerProvider {
   private readonly clusterHost: string;
   private readonly coordinatorHttpPort: number;
   private readonly coordinatorClusterPort: number;
+  private readonly fsSnapshots: McpJsFsSnapshotConfig | undefined;
   private readonly readinessTimeoutMs: number;
   private readonly readinessPollMs: number;
   private readonly spawn: WorkerSpawn;
@@ -174,6 +200,7 @@ export class SubprocessWorkerProvider implements McpJsWorkerProvider {
       options.coordinatorHttpPort ?? DEFAULT_COORDINATOR_HTTP_PORT;
     this.coordinatorClusterPort =
       options.coordinatorClusterPort ?? DEFAULT_COORDINATOR_CLUSTER_PORT;
+    this.fsSnapshots = resolveFsSnapshots(options.fsSnapshots);
     this.readinessTimeoutMs =
       options.readinessTimeoutMs ?? DEFAULT_READINESS_TIMEOUT_MS;
     this.readinessPollMs = options.readinessPollMs ?? DEFAULT_READINESS_POLL_MS;
@@ -243,6 +270,10 @@ export class SubprocessWorkerProvider implements McpJsWorkerProvider {
       nodeId: COORDINATOR_NODE_ID,
       storageDir: this.storageDir,
       advertiseHost: this.clusterHost,
+      // The coordinator must enable fs snapshots too: in cluster mode every
+      // node with snapshots on needs the shared blob store, and the leader
+      // participates in cluster-wide label replication.
+      fsSnapshots: this.fsSnapshots,
     });
 
     const proc = this.spawn(this.binaryPath, args);
@@ -298,6 +329,7 @@ export class SubprocessWorkerProvider implements McpJsWorkerProvider {
       // The agent's MCP client connects over SSE (`<baseUrl>/sse`).
       transport: "sse",
       runtimeConfig: params.runtimeConfig,
+      fsSnapshots: this.fsSnapshots,
     });
 
     const proc = this.spawn(this.binaryPath, args);

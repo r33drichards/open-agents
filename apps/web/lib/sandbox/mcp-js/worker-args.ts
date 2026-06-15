@@ -2,6 +2,7 @@ import type {
   McpJsCapabilities,
   McpJsRuntimeConfig,
 } from "@open-agents/sandbox";
+import type { McpJsFsSnapshotConfig } from "@/lib/sandbox/config";
 
 /** Inputs for {@link buildMcpV8WorkerArgs}. */
 export interface BuildWorkerArgsParams {
@@ -32,6 +33,13 @@ export interface BuildWorkerArgsParams {
   asLearner?: boolean;
   /** Declarative per-session runtime config. */
   runtimeConfig?: McpJsRuntimeConfig;
+  /**
+   * Per-session content-addressed filesystem snapshots. When enabled, the
+   * worker mounts a per-session CAS filesystem alongside the heap. In cluster
+   * mode the blob store must be shared, so an S3 bucket is required (the worker
+   * inherits AWS_* credentials from the parent process environment).
+   */
+  fsSnapshots?: McpJsFsSnapshotConfig;
 }
 
 /**
@@ -46,14 +54,23 @@ export interface BuildWorkerArgsParams {
  */
 export function buildMcpV8WorkerArgs(params: BuildWorkerArgsParams): string[] {
   const portFlag = params.transport === "sse" ? "sse-port" : "http-port";
+  const fs = params.fsSnapshots;
+  // `--s3-bucket` selects the heap backend AND backs the fs blob store, and it
+  // is mutually exclusive with `--directory-path`. So when fs snapshots use S3,
+  // route heaps to S3 too (with a local write-through cache) and omit the
+  // file-backed `--directory-path`.
+  const useS3 = Boolean(fs?.enabled && fs.s3Bucket);
+
   const args = [
     `--${portFlag}=${params.httpPort}`,
-    `--directory-path=${params.storageDir}/heaps`,
     `--session-db-path=${params.storageDir}/sessions/${params.nodeId}`,
     `--cluster-port=${params.clusterPort}`,
     `--node-id=${params.nodeId}`,
     `--advertise-addr=${params.advertiseHost}:${params.clusterPort}`,
   ];
+  if (!useS3) {
+    args.push(`--directory-path=${params.storageDir}/heaps`);
+  }
 
   if (params.join) {
     args.push(`--join=${params.join}`);
@@ -62,7 +79,22 @@ export function buildMcpV8WorkerArgs(params: BuildWorkerArgsParams): string[] {
     args.push("--join-as-learner");
   }
 
-  const policiesJson = buildPoliciesJson(params.runtimeConfig?.capabilities);
+  if (fs?.enabled) {
+    args.push("--enable-fs-snapshots");
+    // Cluster mode requires a shared blob store. The worker reads AWS_* creds
+    // (and AWS_ENDPOINT_URL / AWS_S3_FORCE_PATH_STYLE for MinIO) from its
+    // inherited environment.
+    if (fs.s3Bucket) {
+      args.push(`--s3-bucket=${fs.s3Bucket}`);
+      // Per-node local write-through cache for the shared S3 blob store.
+      args.push(`--cache-dir=${params.storageDir}/fs-cache/${params.nodeId}`);
+    }
+  }
+
+  const policiesJson = buildPoliciesJson(
+    params.runtimeConfig?.capabilities,
+    fs?.enabled ? fs.policyFilePath : undefined,
+  );
   if (policiesJson) {
     args.push(`--policies-json=${policiesJson}`);
   }
@@ -84,18 +116,26 @@ const CAPABILITY_KEYS = ["fetch", "filesystem", "subprocess"] as const;
  */
 function buildPoliciesJson(
   capabilities?: McpJsCapabilities,
+  fsPolicyFilePath?: string,
 ): string | undefined {
-  if (!capabilities) {
-    return undefined;
+  const policies: Record<string, { policies: { url: string }[] }> = {};
+
+  if (capabilities) {
+    for (const key of CAPABILITY_KEYS) {
+      const policy = capabilities[key];
+      if (!(policy?.enabled && policy.opaUrls?.length)) {
+        continue;
+      }
+      policies[key] = { policies: policy.opaUrls.map((url) => ({ url })) };
+    }
   }
 
-  const policies: Record<string, { policies: { url: string }[] }> = {};
-  for (const key of CAPABILITY_KEYS) {
-    const policy = capabilities[key];
-    if (!(policy?.enabled && policy.opaUrls?.length)) {
-      continue;
-    }
-    policies[key] = { policies: policy.opaUrls.map((url) => ({ url })) };
+  // FS snapshots need the filesystem surface enabled. Mount the local rego
+  // policy via a file:// URL unless a capability policy already set one.
+  if (fsPolicyFilePath && !policies.filesystem) {
+    policies.filesystem = {
+      policies: [{ url: `file://${fsPolicyFilePath}` }],
+    };
   }
 
   return Object.keys(policies).length > 0

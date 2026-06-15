@@ -163,8 +163,12 @@ export const openAgent = new ToolLoopAgent({
     let toolEnvironment: "cloud" | "js" = "cloud";
 
     if (sandboxState.type === "mcp-js") {
+      // Pass the session label as X-MCP-Session-Id so the worker keys both the
+      // V8 heap and the per-session CAS filesystem to this session (state
+      // persists across runs without the agent tracking snapshot handles).
       const { tools: mcpTools, instructions } = await getToolboxTools(
         sandboxState.baseUrl,
+        sandboxState.session,
       );
       toolSet = { ...mcpJsMetaTools, ...mcpTools } as unknown as typeof tools;
       mcpInstructions = instructions;
