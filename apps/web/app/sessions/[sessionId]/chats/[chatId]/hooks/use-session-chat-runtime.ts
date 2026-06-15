@@ -19,6 +19,7 @@ import {
   getOrCreateChatInstance,
 } from "@/lib/chat-instance-manager";
 import { cleanupChatRouteOnUnmount } from "@/lib/chat-route-cleanup";
+import { coordinateChatResume } from "@/lib/chat/chat-resume-coordinator";
 import {
   clearChatWorkspaceStatus,
   getChatWorkspaceStatusSnapshot,
@@ -189,11 +190,29 @@ export function useSessionChatRuntime({
         chatInstance.status === "error"),
   );
 
+  // Resume is driven manually through `coordinateChatResume` (see the mount
+  // effect below) rather than the SDK's built-in `resume` option. The built-in
+  // option fires its own resume effect that we cannot funnel through the
+  // single-flight coordinator, so it could race the focus/visibility recovery
+  // path and attach a second stream to the same run.
   const chat = useChat<WebAgentUIMessage>({
     chat: chatInstance,
-    resume: shouldResumeOnMountRef.current,
+    resume: false,
     experimental_throttle: CHAT_UI_UPDATE_THROTTLE_MS,
   });
+
+  // Mount-time resume: if the page loaded with a known active stream, attach to
+  // it exactly once, through the coordinator so it cannot race other triggers.
+  const didMountResumeRef = useRef(false);
+  useEffect(() => {
+    if (didMountResumeRef.current) {
+      return;
+    }
+    didMountResumeRef.current = true;
+    if (shouldResumeOnMountRef.current) {
+      void coordinateChatResume(chatId, chat);
+    }
+  }, [chatId, chat]);
 
   /**
    * Clear a transient chat error (e.g. iOS "Load failed") and attempt to
@@ -239,7 +258,9 @@ export function useSessionChatRuntime({
           // Clear the error so the chat UI becomes visible again.
           chat.clearError();
           // If the server-side stream is still running, reconnect to it.
-          await chat.resumeStream();
+          // Routed through the coordinator so a recovery resume never races the
+          // mount resume or the reactive fallback onto the same run.
+          await coordinateChatResume(chatId, chat);
         } finally {
           retryInFlightRef.current = false;
         }
@@ -325,8 +346,9 @@ export function useSessionChatRuntime({
       try {
         // GET /api/chat/:id/stream returns 204 when there's no active stream
         // (cheap no-op for the AI SDK) and 200 + stream bytes when one is
-        // live. resumeStream handles both paths.
-        await chat.resumeStream();
+        // live. The coordinator keeps this from racing the mount/recovery
+        // resume onto the same run.
+        await coordinateChatResume(chatId, chat);
       } catch {
         // Transient failure (network, stale session, etc.) — let the next
         // scheduled attempt retry.

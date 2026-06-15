@@ -85,8 +85,14 @@ export async function GET(request: Request, context: RouteContext) {
       return new Response(null, { status: 204 });
     }
 
+    // Always replay from the start of the stream (index 0) when the client
+    // doesn't ask for a specific point. Each AI SDK resume begins a fresh
+    // `makeRequest` with an empty `activeTextParts` map, so it must see the
+    // `text-start` chunk before any `text-delta`; replaying from a non-zero
+    // index would skip `text-start` and trigger the SDK's "Received text-delta
+    // for missing text part" error.
     const readable = run.getReadable<WebAgentUIMessageChunk>({
-      startIndex: parsedStartIndex.startIndex,
+      startIndex: parsedStartIndex.startIndex ?? 0,
     });
     const tailIndex = await readable.getTailIndex();
     const stream = createCancelableReadableStream(readable);
