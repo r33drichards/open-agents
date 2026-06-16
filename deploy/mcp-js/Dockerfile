@@ -17,9 +17,11 @@ FROM node:22-bookworm-slim AS gen
 RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /build
-COPY fetch-vendor.sh build-bootstrap.mjs ./
-COPY src ./src
-COPY engines ./engines
+# Build context is the repo root (Railway monorepo: RAILWAY_DOCKERFILE_PATH=
+# deploy/mcp-js/Dockerfile), so these paths are repo-root-relative.
+COPY deploy/mcp-js/fetch-vendor.sh deploy/mcp-js/build-bootstrap.mjs ./
+COPY deploy/mcp-js/src ./src
+COPY deploy/mcp-js/engines ./engines
 RUN ./fetch-vendor.sh
 RUN node build-bootstrap.mjs /build/bootstrap.js
 
@@ -67,7 +69,7 @@ COPY --from=gen /build/bootstrap.js /rootfs/opt/languages/bootstrap.js
 COPY --from=gen /build/vendor/picat.wasm /build/vendor/tla_checker.wasm \
                 /build/vendor/minizinc.wasm /build/vendor/acadlisp.wasm \
                 /build/vendor/lua.wasm /rootfs/opt/languages/
-COPY fetch.rego filesystem.rego /rootfs/opt/languages/
+COPY deploy/mcp-js/fetch.rego deploy/mcp-js/filesystem.rego /rootfs/opt/languages/
 
 # ── Stage 3: scratch ───────────────────────────────────────────────────────
 FROM scratch
