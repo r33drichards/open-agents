@@ -1,6 +1,7 @@
 import "server-only";
 
 import { gateway } from "ai";
+import { getAzureModelId, isAzureModelEnabled } from "@open-agents/agent";
 import { z } from "zod";
 import { filterDisabledModels } from "./model-availability";
 import type {
@@ -201,7 +202,33 @@ function addModelsDevMetadata(
   return nextModel;
 }
 
+/**
+ * In Azure-override mode every model id collapses onto the single configured
+ * deployment, so there is no gateway catalog to fetch. Surface that one model
+ * instead of calling (and failing against) the AI Gateway.
+ */
+function azureOnlyModels(): GatewayModel[] {
+  const id = getAzureModelId();
+  if (!id) {
+    return [];
+  }
+  return [
+    {
+      id,
+      name: `Azure OpenAI (${id})`,
+      description: "Azure OpenAI deployment (AI Gateway disabled).",
+      modelType: "language",
+    },
+  ];
+}
+
 async function fetchGatewayModels(): Promise<GatewayModel[]> {
+  // When Azure OpenAI is configured the gateway is bypassed entirely, so the
+  // model list must not depend on (unauthenticated) gateway access.
+  if (isAzureModelEnabled()) {
+    return azureOnlyModels();
+  }
+
   try {
     const { models } = await gateway.getAvailableModels();
     return models;

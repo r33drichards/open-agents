@@ -40,3 +40,6 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 .devtools
+
+# Local mcp-js subprocess cluster store (heaps + per-node session DBs)
+.mcp-js/

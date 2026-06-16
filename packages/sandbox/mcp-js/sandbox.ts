@@ -150,8 +150,12 @@ export class McpJsSandbox implements Sandbox {
     return Promise.resolve();
   }
 
-  getState(): McpJsState {
+  getState(): McpJsState & { type: "mcp-js" } {
+    // Must include the `type` discriminant: persistSandboxState writes this
+    // verbatim to the DB as the session's SandboxState, and downstream code
+    // (sandbox provisioning, the fork route, the sidebar) keys off `type`.
     return {
+      type: "mcp-js",
       baseUrl: this.baseUrl,
       session: this.session,
       workingDirectory: this.workingDirectory,

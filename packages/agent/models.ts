@@ -211,6 +211,17 @@ export function isAzureModelEnabled(): boolean {
   return readAzureConfig() !== null;
 }
 
+/**
+ * The model id representing the Azure deployment, or null when Azure is not
+ * configured. In Azure-override mode every model id collapses onto this single
+ * deployment (see {@link gateway}); the id mirrors how `createAzureModel`
+ * computes provider options as `openai/<deployment>`.
+ */
+export function getAzureModelId(): string | null {
+  const config = readAzureConfig();
+  return config ? `openai/${config.deployment}` : null;
+}
+
 function createAzureModel(
   config: AzureModelConfig,
   providerOptionsOverrides?: ProviderOptionsByProvider,

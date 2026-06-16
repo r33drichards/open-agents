@@ -52,6 +52,11 @@ export interface McpV8ClientOptions {
 export interface RunJsOptions {
   /** Heap snapshot key to restore before execution (stateful servers). */
   heap?: string;
+  /**
+   * Filesystem snapshot handle to mount (label or 64-hex CA id), independent of
+   * the heap. Used to seed a forked session from a source's fs snapshot.
+   */
+  fs?: string;
   /** Session identifier used for tagging / logging. */
   session?: string;
   /** Per-execution V8 heap memory cap in megabytes. */
@@ -78,6 +83,8 @@ export interface RunJsResult {
   result?: string;
   /** Heap snapshot key produced after execution (stateful servers). */
   heap?: string;
+  /** Filesystem snapshot CA id produced after execution (when a mount was attached). */
+  fs?: string;
 }
 
 function delay(ms: number, signal?: AbortSignal): Promise<void> {
@@ -223,6 +230,7 @@ export class McpV8Client {
       {
         code,
         heap: options.heap ?? null,
+        fs: options.fs ?? null,
         session: options.session ?? null,
         heap_memory_max_mb: options.heapMemoryMaxMb ?? null,
         execution_timeout_secs: options.executionTimeoutSecs ?? null,
@@ -247,6 +255,7 @@ export class McpV8Client {
       error: info.error ?? undefined,
       result: info.result ?? undefined,
       heap: info.heap ?? undefined,
+      fs: info.fs ?? undefined,
     };
   }
 }

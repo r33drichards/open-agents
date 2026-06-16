@@ -31,4 +31,16 @@ export interface McpJsState {
    * session re-spawns its worker with identical capabilities/policies.
    */
   runtimeConfig?: McpJsRuntimeConfig;
+  /**
+   * Set on a forked session to seed it from a source session's snapshots. On
+   * first provisioning the worker mounts these and records them as this
+   * session's latest heap/fs, then this field is cleared so later restores do
+   * not reset the session back to the fork point.
+   */
+  forkSource?: {
+    /** Source session's latest heap CA id (V8 globals). */
+    heap?: string;
+    /** Source session's latest filesystem CA id. */
+    fs?: string;
+  };
 }

@@ -25,6 +25,8 @@ export type SessionWithUnread = Pick<
   hasStreaming: boolean;
   latestChatId: string | null;
   lastActivityAt: Session["createdAt"];
+  /** Sandbox backend type; only mcp-js sessions can be forked. */
+  sandboxType: string | null;
 };
 
 interface CreateSessionInput {
@@ -83,6 +85,7 @@ function mergeSessionWithSummary(
     hasStreaming: session.hasStreaming,
     latestChatId: session.latestChatId,
     lastActivityAt: session.lastActivityAt,
+    sandboxType: session.sandboxType,
   };
 }
 
@@ -182,6 +185,7 @@ export function useSessions(options?: {
                 hasStreaming: false,
                 latestChatId: createdChat.id,
                 lastActivityAt: createdChat.updatedAt,
+                sandboxType: createdSession.sandboxState?.type ?? null,
               },
               ...(source?.sessions ?? []),
             ],
@@ -197,6 +201,40 @@ export function useSessions(options?: {
       } satisfies CreateSessionResponse;
     },
     [data, globalMutate, mutate],
+  );
+
+  const duplicateSession = useCallback(
+    async (sessionId: string, opts?: { copyMessages?: boolean }) => {
+      const res = await fetch(`/api/sessions/${sessionId}/fork`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ copyMessages: opts?.copyMessages === true }),
+      });
+
+      const responseData = (await res.json()) as {
+        session?: Session;
+        chat?: Chat;
+        error?: string;
+      };
+
+      if (!res.ok || !responseData.session || !responseData.chat) {
+        const message = responseData.error ?? "Failed to duplicate session";
+        toast.error(message);
+        throw new Error(message);
+      }
+
+      const createdSession = responseData.session;
+      const createdChat = responseData.chat;
+
+      // Refetch so the new (forked) session shows with accurate fields.
+      await mutate();
+
+      return {
+        session: createdSession,
+        chat: createdChat,
+      } satisfies CreateSessionResponse;
+    },
+    [mutate],
   );
 
   const renameSession = useCallback(
@@ -460,6 +498,7 @@ export function useSessions(options?: {
     loading: isLoading,
     error,
     createSession,
+    duplicateSession,
     renameSession,
     archiveSession,
     unarchiveSession,

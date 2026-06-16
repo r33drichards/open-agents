@@ -106,12 +106,75 @@ export const MCP_JS_BIN = process.env.MCP_JS_BIN ?? "mcp-v8";
 /** Shared content-addressed store directory for subprocess-mode workers. */
 export const MCP_JS_STORAGE_DIR = process.env.MCP_JS_STORAGE_DIR ?? ".mcp-js";
 
+/** Host the local mcp-v8 cluster nodes advertise/reach each other on. */
+export const MCP_JS_CLUSTER_HOST =
+  process.env.MCP_JS_CLUSTER_HOST ?? "127.0.0.1";
+
+/**
+ * Fixed ports for the coordinator ("main") node so it can be a machine-wide
+ * singleton: any provider instance (Next/Workflow may load the module more than
+ * once) discovers the running coordinator at these ports instead of spawning a
+ * second one (which would deadlock on the coordinator's sled lock).
+ */
+export const MCP_JS_COORDINATOR_HTTP_PORT = Number(
+  process.env.MCP_JS_COORDINATOR_HTTP_PORT ?? 47600,
+);
+export const MCP_JS_COORDINATOR_CLUSTER_PORT = Number(
+  process.env.MCP_JS_COORDINATOR_CLUSTER_PORT ?? 47601,
+);
+
+/**
+ * Content-addressed filesystem snapshot config for mcp-js workers. When
+ * enabled, every worker mounts a per-session CAS filesystem (alongside the V8
+ * heap) so `fs.*` calls in run_js persist across runs. In cluster mode the blob
+ * store must be shared, so a `--s3-bucket` (S3-compatible: real AWS or MinIO via
+ * AWS_ENDPOINT_URL/AWS_S3_FORCE_PATH_STYLE) is required — the workers inherit
+ * the AWS_* credentials from this process's environment.
+ */
+export type McpJsFsSnapshotConfig = {
+  enabled: boolean;
+  /** S3 bucket backing the shared blob store (required in cluster mode). */
+  s3Bucket?: string;
+  /**
+   * Override path to the filesystem OPA/rego policy mounted into each worker.
+   * When unset the (server-only) worker provider resolves the default policy
+   * shipped in this repo. Note: this module is imported by workflow functions,
+   * so it must not touch Node `path`/`fs` — path resolution happens there.
+   */
+  policyFilePath?: string;
+};
+
+export const MCP_JS_FS_SNAPSHOTS_ENABLED =
+  process.env.MCP_JS_FS_SNAPSHOTS === "true";
+
+export const MCP_JS_S3_BUCKET = process.env.MCP_JS_S3_BUCKET;
+
+/** Filesystem-snapshot config for spawned workers, or `enabled: false`. */
+export function getMcpJsFsSnapshotConfig(): McpJsFsSnapshotConfig {
+  return {
+    enabled: MCP_JS_FS_SNAPSHOTS_ENABLED,
+    s3Bucket: MCP_JS_S3_BUCKET,
+    policyFilePath: process.env.MCP_JS_FS_POLICY_FILE,
+  };
+}
+
 /** Options for the subprocess worker provider, sourced from the environment. */
 export function getSubprocessWorkerOptions(): {
   binaryPath: string;
   storageDir: string;
+  clusterHost: string;
+  coordinatorHttpPort: number;
+  coordinatorClusterPort: number;
+  fsSnapshots: McpJsFsSnapshotConfig;
 } {
-  return { binaryPath: MCP_JS_BIN, storageDir: MCP_JS_STORAGE_DIR };
+  return {
+    binaryPath: MCP_JS_BIN,
+    storageDir: MCP_JS_STORAGE_DIR,
+    clusterHost: MCP_JS_CLUSTER_HOST,
+    coordinatorHttpPort: MCP_JS_COORDINATOR_HTTP_PORT,
+    coordinatorClusterPort: MCP_JS_COORDINATOR_CLUSTER_PORT,
+    fsSnapshots: getMcpJsFsSnapshotConfig(),
+  };
 }
 
 /** Whether the mcp-js runtime is selected for sandbox provisioning. */

@@ -1,5 +1,6 @@
 import type { SandboxState } from "@open-agents/sandbox";
 import { and, desc, eq, inArray, isNull, ne, or, sql } from "drizzle-orm";
+import { nanoid } from "nanoid";
 import { db } from "./client";
 import {
   chatMessages,
@@ -102,6 +103,105 @@ export async function createSessionWithInitialChat(
   });
 }
 
+/** Input for {@link forkSessionWithChat}. */
+export type ForkSessionInput = {
+  /** The session being forked (config is cloned from it). */
+  source: SessionRecord;
+  newSessionId: string;
+  newChatId: string;
+  title: string;
+  /** mcp-js sandbox state for the fork, carrying the `forkSource` seed marker. */
+  sandboxState: SandboxState;
+  /** When true, copy the source's most-recent chat messages into the new chat. */
+  copyMessages: boolean;
+};
+
+/**
+ * Create a new session forked from an existing one: clone the source's repo /
+ * model / runtime config, link `parentSessionId`, and seed the mcp-js sandbox
+ * state (heap + fs) via the provided `sandboxState.forkSource`. Optionally copy
+ * the source's most-recent chat history into the new chat.
+ */
+export async function forkSessionWithChat(input: ForkSessionInput) {
+  const { source } = input;
+  return db.transaction(async (tx) => {
+    // The source's most-recently-active chat drives the model and (optionally)
+    // the copied history.
+    const sourceChat = await tx.query.chats.findFirst({
+      where: eq(chats.sessionId, source.id),
+      orderBy: [desc(chats.updatedAt), desc(chats.createdAt)],
+    });
+
+    const [session] = await tx
+      .insert(sessions)
+      .values({
+        id: input.newSessionId,
+        userId: source.userId,
+        title: input.title,
+        status: "running",
+        repoOwner: source.repoOwner,
+        repoName: source.repoName,
+        branch: source.branch,
+        cloneUrl: source.cloneUrl,
+        vercelProjectId: source.vercelProjectId,
+        vercelProjectName: source.vercelProjectName,
+        vercelTeamId: source.vercelTeamId,
+        vercelTeamSlug: source.vercelTeamSlug,
+        isNewBranch: source.isNewBranch,
+        autoCommitPushOverride: source.autoCommitPushOverride,
+        autoCreatePrOverride: source.autoCreatePrOverride,
+        globalSkillRefs: source.globalSkillRefs ?? [],
+        parentSessionId: source.id,
+        sandboxState: input.sandboxState,
+        lifecycleState: "provisioning",
+        lifecycleVersion: 0,
+      })
+      .returning();
+    if (!session) {
+      throw new Error("Failed to create forked session");
+    }
+
+    const [chat] = await tx
+      .insert(chats)
+      .values({
+        id: input.newChatId,
+        sessionId: session.id,
+        title: sourceChat?.title ?? "New chat",
+        modelId: sourceChat?.modelId ?? undefined,
+      })
+      .returning();
+    if (!chat) {
+      throw new Error("Failed to create forked chat");
+    }
+
+    if (input.copyMessages && sourceChat) {
+      const sourceMessages = await tx
+        .select({
+          role: chatMessages.role,
+          parts: chatMessages.parts,
+          createdAt: chatMessages.createdAt,
+        })
+        .from(chatMessages)
+        .where(eq(chatMessages.chatId, sourceChat.id))
+        .orderBy(chatMessages.createdAt);
+
+      if (sourceMessages.length > 0) {
+        await tx.insert(chatMessages).values(
+          sourceMessages.map((message) => ({
+            id: nanoid(),
+            chatId: chat.id,
+            role: message.role,
+            parts: message.parts,
+            createdAt: message.createdAt,
+          })),
+        );
+      }
+    }
+
+    return { session: normalizeSessionRecord(session), chat };
+  });
+}
+
 export async function getSessionById(sessionId: string) {
   const session = await db.query.sessions.findFirst({
     where: eq(sessions.id, sessionId),
@@ -195,6 +295,8 @@ export type SessionWithUnread = SessionSidebarFields & {
   hasStreaming: boolean;
   latestChatId: string | null;
   lastActivityAt: Date;
+  /** Sandbox backend type (extracted from sandbox_state JSON, not the full blob). */
+  sandboxType: string | null;
 };
 
 type GetSessionsWithUnreadByUserIdOptions = {
@@ -235,6 +337,8 @@ export async function getSessionsWithUnreadByUserId(
       prNumber: sessions.prNumber,
       prStatus: sessions.prStatus,
       createdAt: sessions.createdAt,
+      // Lightweight: just the discriminant, not the whole sandbox_state blob.
+      sandboxType: sql<string | null>`${sessions.sandboxState}->>'type'`,
       lastActivityAt: sql<Date>`COALESCE(MAX(${chats.updatedAt}), ${sessions.createdAt})`,
       hasUnread: sql<boolean>`COALESCE(BOOL_OR(
         CASE

@@ -1,0 +1,67 @@
+# Local dev stack for open-agents with mcp-js per-session filesystem snapshots.
+#
+# Brings up the external dependencies the app needs locally and (optionally) the
+# web app itself, wired together with health-gated dependencies:
+#
+#   minio  ──(healthy)──>  minio-setup  ──(done)──>  web
+#
+# Run it with the nix flake in this repo:
+#
+#   nix run            # starts the whole stack (process-compose TUI)
+#   nix run .#deps     # just minio + bucket (run `pnpm web` yourself)
+#
+# Prerequisites (not managed here):
+#   - Postgres on localhost:5432 with the open_agents DB migrated
+#     (POSTGRES_URL in apps/web/.env.local). It's left external so this stack
+#     never fights an already-running system Postgres.
+#   - A built mcp-js release binary, with MCP_JS_BIN pointing at it in
+#     apps/web/.env.local (release is required locally — see fs-snapshots notes).
+#   - apps/web/.env.local with MCP_JS_FS_SNAPSHOTS=true, MCP_JS_S3_BUCKET, and the
+#     AWS_* vars below (the web app loads these and the spawned workers inherit
+#     them).
+version: "0.5"
+
+environment:
+  - "MINIO_ROOT_USER=minioadmin"
+  - "MINIO_ROOT_PASSWORD=minioadmin"
+
+processes:
+  # S3-compatible object store backing the per-session CAS filesystem blobs.
+  minio:
+    command: "minio server ./.dev/minio/data --address :9000 --console-address :9001"
+    readiness_probe:
+      http_get:
+        host: 127.0.0.1
+        port: 9000
+        path: /minio/health/live
+      initial_delay_seconds: 1
+      period_seconds: 2
+      failure_threshold: 30
+
+  # Create the bucket the app expects (idempotent), then exit.
+  minio-setup:
+    command: >
+      mc alias set local http://127.0.0.1:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" &&
+      mc mb --ignore-existing local/mcpjs-fs
+    depends_on:
+      minio:
+        condition: process_healthy
+    availability:
+      restart: "no"
+
+  # The Next.js dev server. Spawns per-session mcp-js workers itself; they
+  # inherit AWS_*/MCP_JS_* from apps/web/.env.local. Comment this out (or use
+  # `nix run .#deps`) to run `pnpm web` yourself.
+  web:
+    command: "pnpm web"
+    depends_on:
+      minio-setup:
+        condition: process_completed_successfully
+    readiness_probe:
+      http_get:
+        host: 127.0.0.1
+        port: 3000
+        path: /
+      initial_delay_seconds: 5
+      period_seconds: 3
+      failure_threshold: 40

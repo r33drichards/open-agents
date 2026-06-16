@@ -10,6 +10,7 @@ import {
   updateSessionIfNotArchived,
   type SessionRecord,
 } from "@/lib/db/sessions";
+import { seedForkedSession } from "@/lib/sandbox/mcp-js/fork";
 import { getNextLifecycleVersion } from "@/lib/sandbox/lifecycle";
 import { getMcpJsWorkerProvider } from "@/lib/sandbox/mcp-js/worker-provider";
 import type { ProvisionSessionSandboxResult } from "@/lib/sandbox/provisioning";
@@ -46,6 +47,16 @@ export async function buildMcpJsSandboxState(
     sessionId: session.id,
     runtimeConfig,
   });
+
+  // Forked session: seed this worker from the source session's snapshots once,
+  // before it serves the agent, then drop the marker so later restores don't
+  // reset the session back to the fork point.
+  const existing = session.sandboxState;
+  const forkSource =
+    existing?.type === "mcp-js" ? existing.forkSource : undefined;
+  if (forkSource) {
+    await seedForkedSession(worker.baseUrl, session.id, forkSource);
+  }
 
   return {
     type: "mcp-js",

@@ -30,6 +30,7 @@ describe("McpJsSandbox", () => {
       session: "sess-1",
     });
     expect(sandbox.getState()).toEqual({
+      type: "mcp-js",
       baseUrl: "http://localhost:8080",
       session: "sess-1",
       workingDirectory: "/work",

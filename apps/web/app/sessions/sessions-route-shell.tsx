@@ -70,6 +70,7 @@ export function SessionsRouteShell({
     archivedCount,
     loading: sessionsLoading,
     createSession,
+    duplicateSession,
     renameSession,
     archiveSession,
     unarchiveSession,
@@ -165,6 +166,27 @@ export function SessionsRouteShell({
       }
     },
     [archiveSession, routeSessionId, router, startNavigationTransition],
+  );
+
+  const handleDuplicateSession = useCallback(
+    (source: SessionWithUnread, opts: { copyMessages: boolean }) => {
+      void (async () => {
+        try {
+          const { session: created, chat } = await duplicateSession(
+            source.id,
+            opts,
+          );
+          startNavigationTransition(() => {
+            router.push(`/sessions/${created.id}/chats/${chat.id}`, {
+              scroll: false,
+            });
+          });
+        } catch {
+          // duplicateSession surfaces a toast on failure.
+        }
+      })();
+    },
+    [duplicateSession, router, startNavigationTransition],
   );
 
   const handleUnarchiveSession = useCallback(
@@ -270,6 +292,7 @@ export function SessionsRouteShell({
               onRenameSession={handleRenameSession}
               onArchiveSession={handleArchiveSession}
               onUnarchiveSession={handleUnarchiveSession}
+              onDuplicateSession={handleDuplicateSession}
               onOpenNewSession={openNewSessionDialog}
               onCreateSessionForRepo={handleCreateSessionForRepo}
               onCreateSessionFromBranch={handleCreateSessionFromBranch}
