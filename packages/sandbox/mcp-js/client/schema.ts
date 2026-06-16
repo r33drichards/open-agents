@@ -216,6 +216,8 @@ export interface components {
       heap?: string | null;
       /** @description Per-execution V8 heap memory cap in megabytes. */
       heap_memory_max_mb?: number | null;
+      /** @description Filesystem snapshot handle to mount (label or 64-hex CA id), independent of `heap`. */
+      fs?: string | null;
       /** @description Session identifier used for tagging / logging. */
       session?: string | null;
       /** @description Arbitrary key/value tags attached to the resulting heap snapshot. */
@@ -230,6 +232,8 @@ export interface components {
       execution_id: string;
       /** @description Heap snapshot key produced after execution. */
       heap?: string | null;
+      /** @description Filesystem snapshot CA id produced after execution (when a mount was attached). */
+      fs?: string | null;
       /** @description Final return value serialised to JSON (present when `status` is `completed`). */
       result?: string | null;
       /** @description ISO-8601 timestamp when execution started. */

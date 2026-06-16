@@ -157,6 +157,10 @@ export const sessions = pgTable(
       .$type<GlobalSkillRef[]>()
       .notNull()
       .default([]),
+    // Source session this one was forked/duplicated from (heap + fs seeded from
+    // it). Null for normally-created sessions. Not a FK so deleting the parent
+    // doesn't cascade to forks.
+    parentSessionId: text("parent_session_id"),
     // Unified sandbox state
     sandboxState: jsonb("sandbox_state").$type<SandboxState>(),
     // Lifecycle orchestration state for sandbox management

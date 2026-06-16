@@ -4,6 +4,7 @@ import {
   Archive,
   ChevronDown,
   CircleDashed,
+  Copy,
   FolderGit2,
   MessageSquare,
   GitBranch,
@@ -23,6 +24,12 @@ import { BranchPickerDialog } from "@/components/branch-picker-dialog";
 import { getValidRenameTitle } from "@/components/inbox-sidebar-rename";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Dialog,
   DialogClose,
@@ -62,6 +69,10 @@ type InboxSidebarProps = {
   onRenameSession?: (sessionId: string, title: string) => Promise<void>;
   onArchiveSession: (sessionId: string) => Promise<void>;
   onUnarchiveSession: (sessionId: string) => Promise<void>;
+  onDuplicateSession?: (
+    session: SessionWithUnread,
+    opts: { copyMessages: boolean },
+  ) => void;
   onOpenNewSession: () => void;
   onCreateSessionForRepo: (repoOwner: string, repoName: string) => void;
   onCreateSessionFromBranch: (
@@ -363,6 +374,10 @@ type SessionRowProps = {
   onRenameSession?: (sessionId: string, title: string) => Promise<void>;
   onArchiveSession: (session: SessionWithUnread) => void;
   onUnarchiveSession: (session: SessionWithUnread) => void;
+  onDuplicateSession?: (
+    session: SessionWithUnread,
+    opts: { copyMessages: boolean },
+  ) => void;
 };
 
 const SessionRow = memo(function SessionRow({
@@ -374,6 +389,7 @@ const SessionRow = memo(function SessionRow({
   onRenameSession,
   onArchiveSession,
   onUnarchiveSession,
+  onDuplicateSession,
 }: SessionRowProps) {
   const isMobile = useIsMobile();
   const [isHovered, setIsHovered] = useState(false);
@@ -499,6 +515,43 @@ const SessionRow = memo(function SessionRow({
             Rename session
           </TooltipContent>
         </Tooltip>
+      ) : null}
+      {onDuplicateSession && session.sandboxType === "mcp-js" ? (
+        <DropdownMenu>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className="rounded p-0.5 text-muted-foreground/60 transition-colors hover:text-muted-foreground"
+                  aria-label="Duplicate session"
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  <Copy className="h-3.5 w-3.5" />
+                </button>
+              </DropdownMenuTrigger>
+            </TooltipTrigger>
+            <TooltipContent side="top" sideOffset={4}>
+              Duplicate session
+            </TooltipContent>
+          </Tooltip>
+          <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+            <DropdownMenuItem
+              onSelect={() =>
+                onDuplicateSession(session, { copyMessages: false })
+              }
+            >
+              Duplicate sandbox only
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onSelect={() =>
+                onDuplicateSession(session, { copyMessages: true })
+              }
+            >
+              Duplicate with chat history
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       ) : null}
       <Tooltip>
         <TooltipTrigger asChild>
@@ -689,6 +742,7 @@ export function InboxSidebar({
   onRenameSession,
   onArchiveSession,
   onUnarchiveSession,
+  onDuplicateSession,
   onOpenNewSession,
   onCreateSessionForRepo,
   onCreateSessionFromBranch,
@@ -1167,6 +1221,7 @@ export function InboxSidebar({
                               onRenameSession={onRenameSession}
                               onArchiveSession={handleArchiveSession}
                               onUnarchiveSession={handleUnarchiveSession}
+                              onDuplicateSession={onDuplicateSession}
                             />
                           ))}
                         </div>
