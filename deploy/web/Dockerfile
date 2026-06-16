@@ -33,4 +33,4 @@ COPY --from=build /app /app
 # Apply DB migrations, then start. Run from apps/web so migrate.ts resolves its
 # relative "./lib/db/migrations" folder. Railway injects PORT; Next honours it.
 WORKDIR /app/apps/web
-CMD ["sh", "-c", "node lib/db/migrate.ts && pnpm start -- -p ${PORT:-3000}"]
+CMD ["sh", "-c", "node lib/db/migrate.ts && pnpm exec next start -p ${PORT:-3000}"]
