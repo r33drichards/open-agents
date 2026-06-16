@@ -3,13 +3,18 @@
 Two services on one Railway project:
 
 - **mcp-js** — the mcp-v8 sandbox backend (`deploy/mcp-js/`). Toolbox-style
-  scratch image on mcp-v8 **v0.15.0**, bundling the eight languages + the
+  scratch image on mcp-v8 **v0.15.1**, bundling the eight languages + the
   craftos upstream, but **stateful with per-session content-addressed
   filesystem snapshots** on a persistent volume at `/data` (single node).
   Serves SSE MCP at `/sse` and REST at `/api/exec` on port 3000.
+  **Internal-only** — no public domain; the image sets `MCP_V8_BIND_HOST=::`
+  (dual-stack) so it is reachable at `http://mcp-js.railway.internal:3000`
+  over Railway's private network. (Requires mcp-v8 ≥ v0.15.1, which added the
+  `MCP_V8_BIND_HOST` env; older builds hardcode `0.0.0.0` and won't bind IPv6.)
 - **web** — the Next.js app (`deploy/web/Dockerfile`, build context = repo
-  root). Talks to the mcp-js service over `MCP_JS_BASE_URL` (shared remote
-  worker — no local subprocess workers) and to a Railway Postgres.
+  root), the only service with a public domain. Talks to the mcp-js service
+  over `MCP_JS_BASE_URL` (shared remote worker — no local subprocess workers)
+  and to a Railway Postgres.
 
 ## Layout
 
@@ -36,9 +41,11 @@ Required variables:
 | Variable | Value |
 |---|---|
 | `POSTGRES_URL` | Railway Postgres connection string (`${{Postgres.DATABASE_URL}}`) |
-| `MCP_JS_BASE_URL` | `https://<mcp-js-domain>` (the mcp-js service's public URL) |
+| `MCP_JS_BASE_URL` | `http://mcp-js.railway.internal:3000` (mcp-js private address) |
+| `RAILWAY_DOCKERFILE_PATH` | `deploy/web/Dockerfile` (monorepo: build context = repo root) |
 | `BOTID_DISABLED` | `true` (no Vercel BotId off-Vercel) |
 | `RATE_LIMIT_DISABLED` | `true` (no Redis) |
+| `BETTER_AUTH_URL` | the web service's public URL (e.g. `https://web-…up.railway.app`) |
 | `BETTER_AUTH_SECRET` | session signing secret |
 | `AZURE_OPENAI_API_KEY` / `AZURE_OPENAI_RESOURCE_NAME` / `AZURE_OPENAI_DEPLOYMENT` / `AZURE_OPENAI_API_VERSION` | the model backend |
 | `AI_GATEWAY_API_KEY` | (optional) if using the gateway instead of Azure-only |
@@ -56,16 +63,20 @@ Notes:
 
 ```bash
 railway init -n open-agents
-# mcp-js
+# mcp-js — internal only (no domain); volume add attaches to the linked service
 railway add -s mcp-js
-railway volume add -s mcp-js -m /data
-(cd deploy/mcp-js && railway up -s mcp-js -c)
-railway domain -s mcp-js
+railway service mcp-js && railway volume add -m /data
+(cd deploy/mcp-js && railway up -s mcp-js -d)
 # postgres
 railway add -d postgres
-# web
+# web — the only public service
 railway add -s web
-railway variables -s web --set MCP_JS_BASE_URL=https://<mcp-js-domain> --set BOTID_DISABLED=true ...
-railway up -s web -c
-railway domain -s web
+railway domain -s web   # note the URL for BETTER_AUTH_URL
+railway variables -s web \
+  --set RAILWAY_DOCKERFILE_PATH=deploy/web/Dockerfile \
+  --set MCP_JS_BASE_URL=http://mcp-js.railway.internal:3000 \
+  --set 'POSTGRES_URL=${{Postgres.DATABASE_URL}}' \
+  --set BOTID_DISABLED=true --set RATE_LIMIT_DISABLED=true \
+  --set BETTER_AUTH_URL=https://<web-domain> --set BETTER_AUTH_SECRET=... # + AZURE_OPENAI_*, etc.
+railway up -s web -d   # build context = repo root
 ```

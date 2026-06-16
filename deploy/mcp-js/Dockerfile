@@ -26,7 +26,7 @@ RUN node build-bootstrap.mjs /build/bootstrap.js
 # ── Stage 2: assemble a minimal rootfs for the scratch image ───────────────
 FROM debian:bookworm-slim AS rootfs
 
-ARG MCP_V8_VERSION=v0.15.0
+ARG MCP_V8_VERSION=v0.15.1
 ARG TARGETARCH
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -73,6 +73,11 @@ COPY fetch.rego filesystem.rego /rootfs/opt/languages/
 FROM scratch
 
 COPY --from=rootfs /rootfs /
+
+# Bind a dual-stack IPv6 listener ("::" accepts IPv4 too on Linux) so the
+# service is reachable over Railway's private network (mcp-js.railway.internal
+# resolves to IPv6); this service has no public domain.
+ENV MCP_V8_BIND_HOST=::
 
 # Run as root so the Railway volume mounted at /data is writable (a scratch
 # image can't chown a runtime-mounted volume; the V8 isolate is the sandbox).
