@@ -69,6 +69,38 @@ describe("renderDashboard", () => {
     expect(result.success).toBe(false);
   });
 
+  test("persists a spec with valid dataSources", async () => {
+    const { store, current } = memoryStore();
+    const spec: DashboardSpec = {
+      ...validSpec,
+      state: { rows: [] },
+      dataSources: {
+        rows: { code: "return getRows();", bind: "/rows", every: 5000 },
+      },
+    };
+    const result = await renderDashboard(store, spec);
+    expect(result.success).toBe(true);
+    expect(current()?.dataSources?.rows?.bind).toBe("/rows");
+  });
+
+  test("rejects a dataSource with empty code", async () => {
+    const { store } = memoryStore();
+    const result = await renderDashboard(store, {
+      ...validSpec,
+      dataSources: { rows: { code: "  ", bind: "/rows" } },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  test("rejects a dataSource whose bind is not a JSON pointer", async () => {
+    const { store } = memoryStore();
+    const result = await renderDashboard(store, {
+      ...validSpec,
+      dataSources: { rows: { code: "return 1;", bind: "rows" } },
+    });
+    expect(result.success).toBe(false);
+  });
+
   test("surfaces store write failures", async () => {
     const store: DashboardStore = {
       get: () => Promise.resolve(null),

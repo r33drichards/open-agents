@@ -28,6 +28,24 @@ export interface DashboardElement {
   [key: string]: unknown;
 }
 
+/**
+ * A live data source for the dashboard: a JS snippet run in the session's
+ * mcp-js sandbox whose JSON-serializable return value is bound into the
+ * dashboard state. Lets the agent feed live data (computed in chat, read from
+ * `/work`, fetched, …) into the UI instead of baking a static snapshot.
+ */
+export interface DashboardDataSource {
+  /**
+   * JavaScript run in THIS session's sandbox (the same persistent V8 heap +
+   * `/work` filesystem as `run_js`). Must return JSON-serializable data.
+   */
+  code: string;
+  /** JSON Pointer state path the result is written to, e.g. `/rows`. */
+  bind: string;
+  /** Optional auto-refresh interval in ms. Omit to run once on load. */
+  every?: number;
+}
+
 /** A json-render spec: a root element id plus a flat map of elements. */
 export interface DashboardSpec {
   root: string;
@@ -38,6 +56,13 @@ export interface DashboardSpec {
    * json-render catalog before persisting.
    */
   state?: Record<string, unknown>;
+  /**
+   * Optional named live data sources. Each runs in the session's mcp-js sandbox
+   * and binds its result into `state` at `bind`; auto-runs on load (and on
+   * `every` ms), or on demand via the `run_query` action. Keep `state` as the
+   * initial/empty shape so the UI isn't blank before the first query resolves.
+   */
+  dataSources?: Record<string, DashboardDataSource>;
 }
 
 /**
@@ -83,6 +108,16 @@ function validateSpecShape(spec: DashboardSpec): string | null {
     for (const childId of element.children ?? []) {
       if (!spec.elements[childId]) {
         return `Element "${id}" references unknown child "${childId}".`;
+      }
+    }
+  }
+  if (spec.dataSources) {
+    for (const [name, source] of Object.entries(spec.dataSources)) {
+      if (!isNonEmptyString(source?.code)) {
+        return `dataSource "${name}" must have non-empty \`code\`.`;
+      }
+      if (!isNonEmptyString(source?.bind) || !source.bind.startsWith("/")) {
+        return `dataSource "${name}" must have a \`bind\` JSON Pointer starting with "/".`;
       }
     }
   }

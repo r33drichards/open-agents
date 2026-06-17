@@ -6,15 +6,18 @@
  * chat/agent in the session arrive live over an SSE stream (Redis pub/sub); a
  * slow poll is kept as a fallback for when Redis is not configured.
  */
+import { createStateStore, type StateModel } from "@json-render/core";
+import type { Spec } from "@json-render/react";
 import { LayoutDashboard, Loader2, RefreshCw } from "lucide-react";
 import { useParams } from "next/navigation";
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { toast } from "sonner";
 import useSWR from "swr";
-import type { Spec } from "@json-render/react";
+import type { DashboardSpec } from "@open-agents/agent";
 import type { SessionDashboardResponse } from "@/app/api/sessions/[sessionId]/dashboard/route";
-import { DashboardRenderer } from "@/lib/dashboard/registry";
 import { Button } from "@/components/ui/button";
+import { DashboardRenderer } from "@/lib/dashboard/registry";
+import { useDashboardQueries } from "./use-dashboard-queries";
 
 async function fetchDashboard(url: string): Promise<SessionDashboardResponse> {
   const res = await fetch(url);
@@ -22,6 +25,67 @@ async function fetchDashboard(url: string): Promise<SessionDashboardResponse> {
     throw new Error("Failed to load dashboard");
   }
   return (await res.json()) as SessionDashboardResponse;
+}
+
+/**
+ * Renders a resolved spec. Owns an external json-render state store so live data
+ * sources (run in the session's mcp-js sandbox) can write their results into
+ * state. The store is re-created when the spec version changes (a fresh agent
+ * render), which also re-runs the data sources.
+ */
+function DashboardView({
+  sessionId,
+  spec,
+  version,
+  onRefreshDashboard,
+}: {
+  sessionId: string;
+  spec: DashboardSpec;
+  version: number;
+  onRefreshDashboard: () => void;
+}) {
+  // Re-seed the state store only when the spec version changes (a fresh agent
+  // render), not on every background poll that returns an equal spec.
+  const store = useMemo(
+    () => createStateStore((spec.state ?? {}) as StateModel),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [version],
+  );
+
+  const runQuery = useDashboardQueries(sessionId, spec, store, version);
+
+  const handleAction = useCallback(
+    (actionName: string, actionParams?: Record<string, unknown>) => {
+      if (actionName === "refresh_dashboard") {
+        onRefreshDashboard();
+        return;
+      }
+      if (actionName === "run_query") {
+        const name =
+          typeof actionParams?.name === "string" ? actionParams.name : null;
+        if (name) {
+          void runQuery(name);
+        }
+        return;
+      }
+      if (actionName === "notify") {
+        const message =
+          typeof actionParams?.message === "string"
+            ? actionParams.message
+            : "Notification";
+        toast(message);
+      }
+    },
+    [onRefreshDashboard, runQuery],
+  );
+
+  return (
+    <DashboardRenderer
+      spec={spec as unknown as Spec}
+      store={store}
+      onAction={handleAction}
+    />
+  );
 }
 
 export function DashboardTabView() {
@@ -53,22 +117,9 @@ export function DashboardTabView() {
     return () => source.close();
   }, [sessionId, mutate]);
 
-  const handleAction = useCallback(
-    (actionName: string, actionParams?: Record<string, unknown>) => {
-      if (actionName === "refresh_dashboard") {
-        void mutate();
-        return;
-      }
-      if (actionName === "notify") {
-        const message =
-          typeof actionParams?.message === "string"
-            ? actionParams.message
-            : "Notification";
-        toast(message);
-      }
-    },
-    [mutate],
-  );
+  const refreshDashboard = useCallback(() => {
+    void mutate();
+  }, [mutate]);
 
   const spec = data?.spec ?? null;
 
@@ -119,14 +170,12 @@ export function DashboardTabView() {
 
         {!isLoading && !error && spec && (
           <div className="mx-auto max-w-5xl p-4">
-            {/* Seed the renderer's state model from the spec's top-level
-                `state` field so $state/$bindState/repeat components render with
-                the data the model provided (the renderer reads the `state`
-                prop, not `spec.state`). */}
-            <DashboardRenderer
-              spec={spec as unknown as Spec}
-              state={spec.state}
-              onAction={handleAction}
+            <DashboardView
+              key={sessionId}
+              sessionId={sessionId}
+              spec={spec}
+              version={data?.version ?? 0}
+              onRefreshDashboard={refreshDashboard}
             />
           </div>
         )}

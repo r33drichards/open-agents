@@ -31,6 +31,11 @@ export const dashboardCatalog = defineCatalog(schema, {
       description:
         "Show a short toast message to the user. Params: { message: string }.",
     },
+    run_query: {
+      description:
+        "Re-run a named data source (from the spec's `dataSources`) and rebind " +
+        "its result into state. Params: { name: string }. Use on a refresh button.",
+    },
   },
 });
 
@@ -72,6 +77,25 @@ STATE & LISTS:
   { "$bindItem": "field" }, \`visible\`, or \`repeat\` read from it, so include any
   data they reference inline in \`state\`. Include realistic sample data — never
   leave a referenced array empty.
+
+LIVE DATA (\`dataSources\`):
+- \`dataSources\` is an optional top-level map on the spec for LIVE data. Each entry
+  is { "code": "<JS>", "bind": "/path", "every"?: <ms> }:
+  { "dataSources": { "rows": { "code": "return readRows();", "bind": "/rows", "every": 10000 } } }
+- \`code\` is JavaScript run in THIS session's sandbox — the SAME persistent
+  environment as your \`run_js\` calls. So you can read files you wrote to \`/work\`,
+  reuse variables/data you computed earlier, or fetch from an API. It MUST return
+  JSON-serializable data (e.g. \`return rows;\`).
+- The returned data is written into state at \`bind\`, so \`repeat\`/\`$state\`/
+  \`$bindState\` components show it. It auto-runs once on load and, if \`every\` is set,
+  re-runs on that interval (so the dashboard stays live).
+- PREFER \`dataSources\` over pasting large or live data into \`state\`. Put only the
+  initial/empty shape in \`state\` (e.g. \`"state": { "rows": [] }\`) so the UI isn't
+  blank before the first query resolves, and let the data source fill it.
+- To let the user refresh on demand, wire a Button:
+  { "on": { "click": { "action": "run_query", "params": { "name": "rows" } } } }
+- Data sources only work in a JS-sandbox session; if there is none, they no-op and
+  the initial \`state\` is shown.
 - To render a list backed by a state array, put a \`repeat\` field on a container
   element: { "repeat": { "statePath": "/items", "key": "id" } }. Its children are
   expanded once per array item; inside them use { "$item": "field" } for a field

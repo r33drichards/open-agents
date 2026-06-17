@@ -26,6 +26,13 @@ describe("dashboardCatalogPrompt", () => {
     // Sliced cleanly from the section header, not an inline mention.
     expect(dashboardCatalogPrompt).not.toContain("AVAILABLE COMPONENTS list");
   });
+
+  test("documents live data sources and the run_query action", () => {
+    expect(dashboardCatalogPrompt).toContain("dataSources");
+    expect(dashboardCatalogPrompt).toContain("run_query");
+    // Explains the sandbox tie-in so the agent reuses its run_js data.
+    expect(dashboardCatalogPrompt).toContain("run_js");
+  });
 });
 
 describe("validateDashboardSpec", () => {
@@ -60,5 +67,19 @@ describe("validateDashboardSpec", () => {
       },
     });
     expect(result.success).toBe(false);
+  });
+
+  test("accepts a spec with live dataSources", () => {
+    const result = validateDashboardSpec({
+      root: "main",
+      elements: {
+        main: { type: "Card", props: { title: "x" }, children: [] },
+      },
+      state: { rows: [] },
+      dataSources: {
+        rows: { code: "return getRows();", bind: "/rows", every: 5000 },
+      },
+    });
+    expect(result.success).toBe(true);
   });
 });

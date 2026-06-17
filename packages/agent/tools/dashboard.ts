@@ -71,6 +71,37 @@ export const renderDashboardInputSchema = z.object({
             "$bindItem/repeat. Include any data your components reference here, " +
             "with realistic sample values.",
         ),
+      dataSources: z
+        .record(
+          z.string(),
+          z.object({
+            code: z
+              .string()
+              .describe(
+                "JavaScript run in THIS session's sandbox (same persistent V8 " +
+                  "heap + /work filesystem as run_js). Must return " +
+                  "JSON-serializable data.",
+              ),
+            bind: z
+              .string()
+              .describe(
+                'JSON Pointer state path the result is written to, e.g. "/rows".',
+              ),
+            every: z
+              .number()
+              .optional()
+              .describe(
+                "Optional auto-refresh interval in ms. Omit to run once on load.",
+              ),
+          }),
+        )
+        .optional()
+        .describe(
+          "Named live data sources. Each runs in the session sandbox and binds " +
+            "its result into `state` at `bind` (auto-runs on load + `every` ms, " +
+            "and on demand via the `run_query` action). Keep large/live data " +
+            "here instead of pasting it into `state`.",
+        ),
     })
     .describe("A json-render spec describing the dashboard to display."),
 });
