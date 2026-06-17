@@ -1,4 +1,4 @@
-import { discoverSkills } from "@open-agents/agent";
+import { BUILTIN_SKILLS, discoverSkills } from "@open-agents/agent";
 import {
   connectSandbox,
   type Sandbox,
@@ -113,10 +113,11 @@ export async function resolveChatSandboxRuntime(params: {
   });
 
   // User-authored skills are loaded fresh (not cached) so newly written skills
-  // are available on the next turn, then merged with sandbox-discovered ones.
+  // are available on the next turn. Precedence: user > sandbox > built-in, so a
+  // user/sandbox skill can override a built-in of the same name.
   const userSkillRows = await listUserSkills(params.userId);
   const skills = mergeUserSkills(
-    discoveredSkills,
+    mergeUserSkills(BUILTIN_SKILLS, discoveredSkills),
     userSkillRows.map(userSkillToMetadata),
   );
 

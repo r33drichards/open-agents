@@ -33,8 +33,16 @@ export type {
   SpawnSessionInput,
   TeamStore,
 } from "./team/store";
+// Architecture selection
+export type {
+  ArchitectureSelection,
+  ArchitectureSelectionInput,
+  SelectedArchitecture,
+} from "./team/architecture-selection";
+export { selectArchitecture } from "./team/architecture-selection";
 // Skills exports
 export type { UserSkillRecord, UserSkillStore } from "./skills/authoring";
+export { architectureSelectorSkill, BUILTIN_SKILLS } from "./skills/builtin";
 export { discoverSkills, parseSkillFrontmatter } from "./skills/discovery";
 export { extractSkillBody, substituteArguments } from "./skills/loader";
 export type {
