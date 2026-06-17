@@ -303,7 +303,7 @@
     const createCraftOS = new Function(
       'window', 'navigator', 'location', 'performance',
       SRC.craftos + '\n;return CraftOS;')(winStub, navStub, locStub, perfStub);
-    return createCraftOS({
+    const M = await createCraftOS({
       print: () => {},     // swallow the emulated terminal / boot screen
       printErr: () => {},
       instantiateWasm: (imports, cb) => {
@@ -311,6 +311,15 @@
         return {};
       },
     });
+    // The wasm embeds only the ROM (/craftos), not sim/engine.lua. Turtle nodes
+    // (specs with `world` / `world_lua`) need it: ccsim's enginePath() reads
+    // /app/craftos2/sim/engine.lua and copies it into each turtle's computer, and
+    // the per-node prelude dofile's it to install the `turtle` API. Without it a
+    // turtle node's prelude throws and the node produces no output. Write it into
+    // MEMFS here so every craftos() call (incl. selftest) has it available.
+    try { M.FS.mkdirTree('/app/craftos2/sim'); } catch (_e) { /* dir may exist */ }
+    M.FS.writeFile('/app/craftos2/sim/engine.lua', SRC.craftos_engine);
+    return M;
   }
 
   g.craftos = async function craftos(spec) {

@@ -61,7 +61,7 @@ fi
 # wasm builds originate from the r33drichards/pastebin project).
 # CraftOS-PC single-thread wasm (CC:Tweaked emulator, ROM embedded at /craftos)
 # is also vendored in-repo under engines/.
-for f in picat.mjs picat.wasm tla_checker.js tla_checker.wasm craftos.js craftos.wasm; do
+for f in picat.mjs picat.wasm tla_checker.js tla_checker.wasm craftos.js craftos.wasm craftos-engine.lua; do
     cp -f "engines/$f" "vendor/$f"
 done
 

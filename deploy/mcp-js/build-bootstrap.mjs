@@ -64,6 +64,11 @@ const sources = {
   // module.exports tail is inert inside the helper's `new Function(... return
   // CraftOS)` wrapper). No transform needed — no `export`/`import.meta`.
   craftos: vendor('craftos.js'),
+  // The turtle fake-world engine (sim/engine.lua). The wasm embeds only the
+  // ROM, so the helper writes this into MEMFS at /app/craftos2/sim/engine.lua
+  // before cc_run — turtle nodes (world / world_lua) need it to install the
+  // `turtle` API. Plain Lua source; no transform.
+  craftos_engine: vendor('craftos-engine.lua'),
   tla: transformWasmBindgen(vendor('tla_checker.js'), 'tla_checker.js', [
     'check_spec', 'check_spec_with_cfg', 'check_spec_with_config', 'check_spec_with_options',
   ]),
