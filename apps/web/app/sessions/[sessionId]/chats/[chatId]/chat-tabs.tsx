@@ -1,7 +1,14 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
-import { FileText, GitCompare, Pencil, Plus, X } from "lucide-react";
+import {
+  FileText,
+  GitCompare,
+  LayoutDashboard,
+  Pencil,
+  Plus,
+  X,
+} from "lucide-react";
 import {
   type ReactNode,
   useCallback,
@@ -432,6 +439,25 @@ export function ChatTabs({ activeChatId }: ChatTabsProps) {
             </TooltipTrigger>
             <TooltipContent side="bottom">New chat</TooltipContent>
           </Tooltip>
+
+          {/* Session-scoped shared dashboard tab (any chat's agent can update it). */}
+          <div
+            className={cn(
+              "ml-1 flex shrink-0 items-center border-b-2 transition-colors",
+              activeView === "dashboard"
+                ? "border-foreground text-foreground"
+                : "border-transparent text-muted-foreground hover:text-foreground",
+            )}
+          >
+            <button
+              type="button"
+              onClick={() => setActiveView("dashboard")}
+              className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium"
+            >
+              <LayoutDashboard className="h-3.5 w-3.5" />
+              <span>Dashboard</span>
+            </button>
+          </div>
         </div>
       </div>
 

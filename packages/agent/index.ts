@@ -12,6 +12,14 @@ export type {
   OpenAgentModelInput,
 } from "./open-agent";
 export { defaultModel, defaultModelLabel, openAgent } from "./open-agent";
+// Dashboard (generative UI) exports
+export type {
+  DashboardElement,
+  DashboardResult,
+  DashboardSpec,
+  DashboardStore,
+} from "./dashboard/store";
+export { readDashboard, renderDashboard } from "./dashboard/store";
 // Scheduled-tasks exports
 export type {
   CreateScheduledTaskInput,

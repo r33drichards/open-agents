@@ -281,6 +281,13 @@
       "when": 1781538641695,
       "tag": "0039_robust_pete_wisdom",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1781673294919,
+      "tag": "0040_cooing_stranger",
+      "breakpoints": true
     }
   ]
 }

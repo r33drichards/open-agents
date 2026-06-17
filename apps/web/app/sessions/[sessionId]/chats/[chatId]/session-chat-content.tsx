@@ -179,6 +179,10 @@ const FileTabView = dynamic(
   () => import("./file-tab-view").then((m) => m.FileTabView),
   { ssr: false },
 );
+const DashboardTabView = dynamic(
+  () => import("./dashboard-tab-view").then((m) => m.DashboardTabView),
+  { ssr: false },
+);
 const GitPanel = dynamic(() => import("./git-panel").then((m) => m.GitPanel), {
   ssr: false,
 });
@@ -3259,6 +3263,8 @@ export function SessionChatContent({
             <DiffTabView />
           ) : activeView === "file" ? (
             <FileTabView />
+          ) : activeView === "dashboard" ? (
+            <DashboardTabView />
           ) : (
             <>
               {/* Transient error banner (e.g. iOS "Load failed" after sleep) */}

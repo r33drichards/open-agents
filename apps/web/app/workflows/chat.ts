@@ -1021,6 +1021,9 @@ const runAgentStep = async (
     await import("@/lib/skills/user-skill-store");
   const { createScheduledTaskStore } =
     await import("@/lib/scheduling/scheduled-task-store");
+  const { createDashboardStore } =
+    await import("@/lib/dashboard/dashboard-store");
+  const { dashboardCatalogPrompt } = await import("@/lib/dashboard/catalog");
 
   const abortController = new AbortController();
   const stopMonitor = startStopMonitor(workflowRunId, abortController);
@@ -1052,12 +1055,21 @@ const runAgentStep = async (
       // this step and passed in-process (never serialized across the boundary).
       options: {
         ...agentOptions,
+        // Document the generative-UI catalog to the model so its
+        // `render_dashboard` specs only use allowed components.
+        customInstructions: [
+          agentOptions.customInstructions,
+          dashboardCatalogPrompt,
+        ]
+          .filter(Boolean)
+          .join("\n\n"),
         skillStore: createUserSkillStore(userId),
         scheduledTaskStore: createScheduledTaskStore({
           userId,
           sessionId,
           chatId,
         }),
+        dashboardStore: createDashboardStore({ sessionId, chatId }),
       },
       abortSignal: abortController.signal,
     });

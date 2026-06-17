@@ -1,3 +1,4 @@
+import type { DashboardSpec } from "@open-agents/agent";
 import type { SandboxState } from "@open-agents/sandbox";
 import type { ModelVariant } from "@/lib/model-variants";
 import type { GlobalSkillRef } from "@/lib/skills/global-skill-refs";
@@ -220,6 +221,22 @@ export const chats = pgTable(
   },
   (table) => [index("chats_session_id_idx").on(table.sessionId)],
 );
+
+// Session-scoped generative-UI dashboard. One row per session: every chat/agent
+// in the session reads and replaces the same json-render spec, so the "Dashboard"
+// tab is shared across all of a session's chats.
+export const sessionDashboards = pgTable("session_dashboards", {
+  sessionId: text("session_id")
+    .primaryKey()
+    .references(() => sessions.id, { onDelete: "cascade" }),
+  spec: jsonb("spec").$type<DashboardSpec>().notNull(),
+  // Chat whose agent last replaced the spec (for "updated by" attribution).
+  updatedByChatId: text("updated_by_chat_id"),
+  // Bumped on every write so clients can cheaply detect changes when polling.
+  version: integer("version").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
 
 export const shares = pgTable(
   "shares",
