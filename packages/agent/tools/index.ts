@@ -28,3 +28,11 @@ export {
   type RenderDashboardInput,
   type RenderDashboardToolUIPart,
 } from "./dashboard";
+export {
+  listGroupTool,
+  readInboxTool,
+  sendMessageTool,
+  sessionResultTool,
+  spawnSessionTool,
+  waitForMessageTool,
+} from "./team";

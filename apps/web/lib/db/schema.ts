@@ -1,5 +1,6 @@
 import type { DashboardSpec } from "@open-agents/agent";
 import type { SandboxState } from "@open-agents/sandbox";
+import type { AgentGroupConfig } from "@/lib/agents/types";
 import type { ModelVariant } from "@/lib/model-variants";
 import type { GlobalSkillRef } from "@/lib/skills/global-skill-refs";
 import {
@@ -162,6 +163,14 @@ export const sessions = pgTable(
     // it). Null for normally-created sessions. Not a FK so deleting the parent
     // doesn't cascade to forks.
     parentSessionId: text("parent_session_id"),
+    // Multi-agent team membership. When this session participates in a spawned
+    // agent team, groupId links it to its agent_groups row and groupRole marks
+    // its position in the topology. Null for standalone sessions. Not a FK so
+    // deleting the group doesn't cascade to member sessions.
+    groupId: text("group_id"),
+    groupRole: text("group_role", {
+      enum: ["leader", "follower", "peer"],
+    }),
     // Unified sandbox state
     sandboxState: jsonb("sandbox_state").$type<SandboxState>(),
     // Lifecycle orchestration state for sandbox management
@@ -202,7 +211,10 @@ export const sessions = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
-  (table) => [index("sessions_user_id_idx").on(table.userId)],
+  (table) => [
+    index("sessions_user_id_idx").on(table.userId),
+    index("sessions_group_id_idx").on(table.groupId),
+  ],
 );
 
 export const chats = pgTable(
@@ -472,6 +484,96 @@ export const scheduledTasks = pgTable(
 
 export type ScheduledTask = typeof scheduledTasks.$inferSelect;
 export type NewScheduledTask = typeof scheduledTasks.$inferInsert;
+
+// Multi-agent teams — a leader session spawns a group of follower/peer sessions
+// that coordinate under one of the canonical topologies from the agent-scaling
+// literature (arXiv 2512.08296). Each group is driven by a durable orchestrator
+// workflow (app/workflows/agent-team.ts) leased via orchestrationRunId.
+export const agentGroups = pgTable(
+  "agent_groups",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    // The session that spawned (leads) this group.
+    leaderSessionId: text("leader_session_id")
+      .notNull()
+      .references(() => sessions.id, { onDelete: "cascade" }),
+    architecture: text("architecture", {
+      enum: ["sas", "independent", "centralized", "decentralized", "hybrid"],
+    }).notNull(),
+    status: text("status", {
+      enum: ["running", "completed", "failed", "cancelled"],
+    })
+      .notNull()
+      .default("running"),
+    // Topology config: { n, r, d, p, maxTokens, depth }.
+    config: jsonb("config").$type<AgentGroupConfig>().notNull().default({}),
+    // Durable-workflow lease for the orchestrator (mirrors lifecycleRunId).
+    orchestrationRunId: text("orchestration_run_id"),
+    // Aggregated result of the team run (synthesis / consensus output).
+    result: jsonb("result"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("agent_groups_user_id_idx").on(table.userId),
+    index("agent_groups_leader_session_id_idx").on(table.leaderSessionId),
+  ],
+);
+
+export type AgentGroup = typeof agentGroups.$inferSelect;
+export type NewAgentGroup = typeof agentGroups.$inferInsert;
+
+// Agent message bus (mailboxes) — durable, cross-session messaging that powers
+// leader<->follower and peer<->peer coordination, plus human-in-the-loop
+// participation from the chat UI. Replaces the in-memory, single-process
+// workspace-status-store for cross-session traffic.
+export const agentMessages = pgTable(
+  "agent_messages",
+  {
+    id: text("id").primaryKey(),
+    groupId: text("group_id")
+      .notNull()
+      .references(() => agentGroups.id, { onDelete: "cascade" }),
+    // Sender session; null when the message originates from a human or system.
+    fromSessionId: text("from_session_id"),
+    // Recipient session; null means broadcast to the whole group.
+    toSessionId: text("to_session_id"),
+    senderRole: text("sender_role", {
+      enum: ["leader", "follower", "peer", "human", "system"],
+    }).notNull(),
+    kind: text("kind", {
+      enum: ["task", "result", "status", "debate", "vote", "broadcast"],
+    }).notNull(),
+    payload: jsonb("payload").notNull(),
+    // Coordination round (orchestrator round or debate round); 0 when N/A.
+    round: integer("round").notNull().default(0),
+    status: text("status", {
+      enum: ["unread", "read"],
+    })
+      .notNull()
+      .default("unread"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    readAt: timestamp("read_at"),
+  },
+  (table) => [
+    index("agent_messages_inbox_idx").on(
+      table.toSessionId,
+      table.status,
+      table.createdAt,
+    ),
+    index("agent_messages_group_round_idx").on(
+      table.groupId,
+      table.round,
+      table.createdAt,
+    ),
+  ],
+);
+
+export type AgentMessage = typeof agentMessages.$inferSelect;
+export type NewAgentMessage = typeof agentMessages.$inferInsert;
 
 // Usage tracking — one row per assistant turn (append-only)
 export const usageEvents = pgTable("usage_events", {

@@ -288,6 +288,13 @@
       "when": 1781673294919,
       "tag": "0040_cooing_stranger",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1781702221671,
+      "tag": "0041_swift_doctor_faustus",
+      "breakpoints": true
     }
   ]
 }

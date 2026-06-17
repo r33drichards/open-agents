@@ -1024,6 +1024,7 @@ const runAgentStep = async (
   const { createDashboardStore } =
     await import("@/lib/dashboard/dashboard-store");
   const { dashboardCatalogPrompt } = await import("@/lib/dashboard/catalog");
+  const { createTeamStore } = await import("@/lib/agents/team-store");
 
   const abortController = new AbortController();
   const stopMonitor = startStopMonitor(workflowRunId, abortController);
@@ -1070,6 +1071,7 @@ const runAgentStep = async (
           chatId,
         }),
         dashboardStore: createDashboardStore({ sessionId, chatId }),
+        teamStore: createTeamStore({ userId, sessionId, chatId }),
       },
       abortSignal: abortController.signal,
     });

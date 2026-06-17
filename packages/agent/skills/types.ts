@@ -68,7 +68,7 @@ export interface SkillMetadata {
   /** Skill options from frontmatter */
   options: SkillOptions;
   /** Where the skill came from. Defaults to sandbox discovery. */
-  source?: "sandbox" | "user";
+  source?: "sandbox" | "user" | "builtin";
   /**
    * Inline skill body. Set for user-authored skills, which have no sandbox
    * file to read; when present the `skill` tool uses it directly.
