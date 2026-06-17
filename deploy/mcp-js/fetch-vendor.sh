@@ -59,7 +59,9 @@ fi
 # Picat + TLA+ wasm builds are vendored in this repo under engines/
 # (Picat engine source: github.com/r33drichards/Picat, branch wasm-build;
 # wasm builds originate from the r33drichards/pastebin project).
-for f in picat.mjs picat.wasm tla_checker.js tla_checker.wasm; do
+# CraftOS-PC single-thread wasm (CC:Tweaked emulator, ROM embedded at /craftos)
+# is also vendored in-repo under engines/.
+for f in picat.mjs picat.wasm tla_checker.js tla_checker.wasm craftos.js craftos.wasm; do
     cp -f "engines/$f" "vendor/$f"
 done
 

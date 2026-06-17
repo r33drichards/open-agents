@@ -265,6 +265,78 @@
     }
   };
 
+  // ── CraftOS (in-process ComputerCraft / CC:Tweaked emulator, wasm) ───────
+  // Single-threaded CraftOS-PC build (no pthreads/SAB). The ROM is embedded
+  // in the wasm at /craftos. We instantiate a FRESH Module per call from the
+  // server-preloaded `__wasm_craftos` via Emscripten's `instantiateWasm` hook
+  // (same as picat). The boot screen / terminal redraws are swallowed.
+  //
+  // ASYNCIFY SIDE-CHANNEL: cc_run / cc_gps_selftest drive cooperative fibers
+  // that Emscripten implements via Asyncify unwind/rewind. The whole sim runs
+  // to completion synchronously inside the ccall, but the export's *return
+  // value* is swallowed by the unwind sentinel — so we read each result back
+  // through a plain getter (cc_run_result / cc_gps_result) right after the call.
+  //
+  //   await craftos({ rom?: '/craftos', timeout_ms?, nodes: [...] })  -> cc_run JSON
+  //   await craftos({ selftest: true, rom?: '/craftos' })  -> { selftest, pass, result }
+  //   await craftos_selftest(rom?)  -> { pass, result }   (GPS trilateration self-test)
+  async function instantiateCraftOS() {
+    const wasmModule = requireWasm('craftos');
+    // The CraftOS-PC build links SDL2; its audio/gamepad init touches bare
+    // `navigator.*` (and some input handlers touch `window.*`). The deno_core
+    // sandbox defines neither, so feed scoped stubs through Function params
+    // (node happens to define `navigator`, which is why this only bites in the
+    // deployed runtime). Env detection is unaffected — the glue keys it off
+    // `globalThis.window`, which stays undefined.
+    const navStub = { userAgent: 'mcp-v8', language: 'C', platform: '',
+      getGamepads: undefined, mediaDevices: undefined, userActivation: undefined };
+    const winStub = { fsIsSyncing: false, innerWidth: 800, innerHeight: 600,
+      scrollX: 0, scrollY: 0, prompt: () => null, getUserMedia: undefined,
+      addEventListener() {}, removeEventListener() {} };
+    const locStub = { href: 'file:///opt/languages/craftos.js', search: '',
+      protocol: 'file:', host: '', hostname: '', pathname: '/opt/languages/craftos.js' };
+    const createCraftOS = new Function(
+      'window', 'navigator', 'location',
+      SRC.craftos + '\n;return CraftOS;')(winStub, navStub, locStub);
+    return createCraftOS({
+      print: () => {},     // swallow the emulated terminal / boot screen
+      printErr: () => {},
+      instantiateWasm: (imports, cb) => {
+        WebAssembly.instantiate(wasmModule, imports).then((inst) => cb(inst, wasmModule));
+        return {};
+      },
+    });
+  }
+
+  g.craftos = async function craftos(spec) {
+    spec = spec || {};
+    const M = await instantiateCraftOS();
+    const rom = spec.rom || '/craftos';
+    if (spec.selftest) {
+      M.ccall('cc_gps_selftest', null, ['string'], [rom]);
+      const result = M.ccall('cc_gps_result', 'number', []);
+      return { selftest: true, pass: result === 1, result };
+    }
+    const payload = Object.assign({ rom }, spec);
+    M.ccall('cc_run', null, ['string'], [JSON.stringify(payload)]);
+    const ptr = M.ccall('cc_run_result', 'number', []);
+    const json = M.UTF8ToString(ptr);
+    M.ccall('cc_free', null, ['number'], [ptr]);
+    let parsed;
+    try { parsed = JSON.parse(json); }
+    catch (e) { throw new Error('craftos: cc_run returned non-JSON: ' + String(json).slice(0, 200)); }
+    return parsed;
+  };
+
+  // Convenience: GPS trilateration self-test (4 hosts + a client; the client
+  // must trilaterate to (3,4,5)). Returns { pass: true, result: 1 } on success.
+  g.craftos_selftest = async function craftos_selftest(rom) {
+    const M = await instantiateCraftOS();
+    M.ccall('cc_gps_selftest', null, ['string'], [rom || '/craftos']);
+    const result = M.ccall('cc_gps_result', 'number', []);
+    return { pass: result === 1, result };
+  };
+
   // ── JSX (Babel transform + React server render) ─────────────────────────
   g.jsx = function jsx(source, props) {
     if (typeof g.Babel === 'undefined' || typeof g.React === 'undefined' || typeof g.ReactDOMServer === 'undefined') {
@@ -318,6 +390,8 @@
         minizinc: 'await minizinc(model, {data?, args?}?) -> {status, solutions, statistics, stderr, exitCode}',
         autolisp: 'await autolisp(code) -> {result, output, svg}',
         lua: 'await lua(code, opts?) -> {result, stdout, error}  (lua 5.4; result = returned value, stdout = print/io.write)',
+        craftos: 'await craftos({rom?, timeout_ms?, nodes:[...]}) -> cc_run JSON (in-process ComputerCraft/CC:Tweaked emulator; {selftest:true} runs the GPS self-test)',
+        craftos_selftest: 'await craftos_selftest(rom?) -> {pass, result}  (GPS trilateration self-test -> (3,4,5))',
         jsx: 'jsx(source, props?) -> {html}',
         markdown: 'markdown(src) -> {html}',
         mermaid_parse: 'await mermaid_parse(src) -> {valid, diagramType?, error?}',
@@ -328,6 +402,7 @@
         minizinc: typeof g.__wasm_minizinc !== 'undefined',
         autolisp: typeof g.__wasm_autolisp !== 'undefined',
         lua: typeof g.__wasm_lua !== 'undefined',
+        craftos: typeof g.__wasm_craftos !== 'undefined',
       },
     };
   };

@@ -1,9 +1,10 @@
 # mcp-js (r33drichards/mcp-js) sandbox backend for open-agents — Railway.
 #
 # Based on the toolbox image (scratch + prebuilt mcp-v8 release binary + the
-# eight bundled languages and the craftos upstream), on mcp-v8 v0.16.0, with a
-# per-session content-addressed FILESYSTEM (no heap snapshots) so each session
-# gets persistent /work state that coexists with the WASM languages.
+# bundled WASM languages incl. an in-process craftos sim), on mcp-v8 v0.16.0,
+# with a per-session content-addressed FILESYSTEM (no heap snapshots) so each
+# session gets persistent /work state that coexists with the WASM languages.
+# craftos runs in-process via craftos.wasm (no remote --mcp-server dependency).
 #
 # Storage is node-local on a Railway volume mounted at /data (single instance;
 # fs snapshots only need shared S3 in a multi-node cluster). The container runs
@@ -68,7 +69,7 @@ RUN set -eux; \
 COPY --from=gen /build/bootstrap.js /rootfs/opt/languages/bootstrap.js
 COPY --from=gen /build/vendor/picat.wasm /build/vendor/tla_checker.wasm \
                 /build/vendor/minizinc.wasm /build/vendor/acadlisp.wasm \
-                /build/vendor/lua.wasm /rootfs/opt/languages/
+                /build/vendor/lua.wasm /build/vendor/craftos.wasm /rootfs/opt/languages/
 COPY deploy/mcp-js/fetch.rego deploy/mcp-js/filesystem.rego /rootfs/opt/languages/
 
 # ── Stage 3: scratch ───────────────────────────────────────────────────────
@@ -103,11 +104,11 @@ ENTRYPOINT ["/usr/local/bin/mcp-v8", \
   "--execution-timeout", "300", \
   "--max-concurrent-executions", "100", \
   "--allow-external-modules", \
-  "--instructions", "Sandboxed V8 JavaScript runtime (run_js) with fetch enabled and a persistent, per-session content-addressed filesystem at /work (await fs.writeFile('/work/x'), fs.readFile, fs.readdir, etc.) that survives across runs in the same session. Load language helpers once per run with (0,eval)(await fs.readFile('/opt/languages/bootstrap.js')) -> picat, tlaplus, minizinc, autolisp, lua, jsx, markdown, mermaid.", \
-  "--mcp-server", "craftos=sse:https://craftos-mcp-production.up.railway.app/sse", \
+  "--instructions", "Sandboxed V8 JavaScript runtime (run_js) with fetch enabled and a persistent, per-session content-addressed filesystem at /work (await fs.writeFile('/work/x'), fs.readFile, fs.readdir, etc.) that survives across runs in the same session. Load language helpers once per run with (0,eval)(await fs.readFile('/opt/languages/bootstrap.js')) -> picat, tlaplus, minizinc, autolisp, lua, craftos, jsx, markdown, mermaid. The craftos(spec) helper boots networked ComputerCraft computers and turtles in-process (rednet, GPS, turtle fake-worlds) and returns each node's output.", \
   "--policies-json", "{\"fetch\":{\"policies\":[{\"url\":\"file:///opt/languages/fetch.rego\"}]},\"filesystem\":{\"policies\":[{\"url\":\"file:///opt/languages/filesystem.rego\"}]}}", \
   "--wasm-module", "picat=/opt/languages/picat.wasm:512m", \
   "--wasm-module", "tla=/opt/languages/tla_checker.wasm:512m", \
   "--wasm-module", "minizinc=/opt/languages/minizinc.wasm:1g", \
   "--wasm-module", "autolisp=/opt/languages/acadlisp.wasm:512m", \
-  "--wasm-module", "lua=/opt/languages/lua.wasm:512m"]
+  "--wasm-module", "lua=/opt/languages/lua.wasm:512m", \
+  "--wasm-module", "craftos=/opt/languages/craftos.wasm:512m"]
