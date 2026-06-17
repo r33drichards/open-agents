@@ -295,9 +295,14 @@
       addEventListener() {}, removeEventListener() {} };
     const locStub = { href: 'file:///opt/languages/craftos.js', search: '',
       protocol: 'file:', host: '', hostname: '', pathname: '/opt/languages/craftos.js' };
+    // Emscripten's timing (_emscripten_get_now / clock_time_get) calls
+    // `performance.now()`. deno_core defines no `performance` (node/browsers do,
+    // which is why this only bites in the deployed runtime), so cc_run throws
+    // `ReferenceError: performance is not defined` mid-sim without this stub.
+    const perfStub = { now: () => Date.now(), timeOrigin: 0 };
     const createCraftOS = new Function(
-      'window', 'navigator', 'location',
-      SRC.craftos + '\n;return CraftOS;')(winStub, navStub, locStub);
+      'window', 'navigator', 'location', 'performance',
+      SRC.craftos + '\n;return CraftOS;')(winStub, navStub, locStub, perfStub);
     return createCraftOS({
       print: () => {},     // swallow the emulated terminal / boot screen
       printErr: () => {},
