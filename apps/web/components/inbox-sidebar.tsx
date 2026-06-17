@@ -394,6 +394,7 @@ const SessionRow = memo(function SessionRow({
   const isMobile = useIsMobile();
   const [isHovered, setIsHovered] = useState(false);
   const [popoverOpen, setPopoverOpen] = useState(false);
+  const [duplicateMenuOpen, setDuplicateMenuOpen] = useState(false);
   const [isRenaming, setIsRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState(session.title);
   const [renamePending, setRenamePending] = useState(false);
@@ -417,7 +418,10 @@ const SessionRow = memo(function SessionRow({
   }, [isRenaming]);
 
   const hasDiff = session.linesAdded !== null || session.linesRemoved !== null;
-  const showActionButtons = isHovered;
+  // Keep the action buttons mounted while the duplicate menu is open: the menu
+  // renders in a portal outside the row, so moving the mouse to a menu item
+  // drops the row's hover and would otherwise unmount the menu mid-click.
+  const showActionButtons = isHovered || duplicateMenuOpen;
 
   const handleMouseEnter = useCallback(() => {
     if (leaveTimeoutRef.current) {
@@ -517,24 +521,24 @@ const SessionRow = memo(function SessionRow({
         </Tooltip>
       ) : null}
       {onDuplicateSession && session.sandboxType === "mcp-js" ? (
-        <DropdownMenu>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <DropdownMenuTrigger asChild>
-                <button
-                  type="button"
-                  className="rounded p-0.5 text-muted-foreground/60 transition-colors hover:text-muted-foreground"
-                  aria-label="Duplicate session"
-                  onClick={(event) => event.stopPropagation()}
-                >
-                  <Copy className="h-3.5 w-3.5" />
-                </button>
-              </DropdownMenuTrigger>
-            </TooltipTrigger>
-            <TooltipContent side="top" sideOffset={4}>
-              Duplicate session
-            </TooltipContent>
-          </Tooltip>
+        // No Tooltip wrapping the trigger: a Tooltip+DropdownMenu sharing one
+        // `asChild` button fights over pointer/focus and dismisses the menu on
+        // select. `title` gives the hover hint instead.
+        <DropdownMenu
+          open={duplicateMenuOpen}
+          onOpenChange={setDuplicateMenuOpen}
+        >
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              className="rounded p-0.5 text-muted-foreground/60 transition-colors hover:text-muted-foreground"
+              aria-label="Duplicate session"
+              title="Duplicate session"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <Copy className="h-3.5 w-3.5" />
+            </button>
+          </DropdownMenuTrigger>
           <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
             <DropdownMenuItem
               onSelect={() =>
