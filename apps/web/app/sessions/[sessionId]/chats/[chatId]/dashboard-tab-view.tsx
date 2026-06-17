@@ -2,16 +2,18 @@
 
 /**
  * Renders the session's shared generative-UI dashboard. The spec is produced by
- * the agent's `render_dashboard` tool and stored per-session, so this view polls
- * the session dashboard endpoint to pick up changes made by any chat/agent in
- * the session.
+ * the agent's `render_dashboard` tool and stored per-session. Updates from any
+ * chat/agent in the session arrive live over an SSE stream (Redis pub/sub); a
+ * slow poll is kept as a fallback for when Redis is not configured.
  */
-import { Renderer, type Spec } from "@json-render/react";
 import { LayoutDashboard, Loader2, RefreshCw } from "lucide-react";
 import { useParams } from "next/navigation";
+import { useCallback, useEffect } from "react";
+import { toast } from "sonner";
 import useSWR from "swr";
+import type { Spec } from "@json-render/react";
 import type { SessionDashboardResponse } from "@/app/api/sessions/[sessionId]/dashboard/route";
-import { dashboardRegistry } from "@/lib/dashboard/registry";
+import { DashboardRenderer } from "@/lib/dashboard/registry";
 import { Button } from "@/components/ui/button";
 
 async function fetchDashboard(url: string): Promise<SessionDashboardResponse> {
@@ -32,9 +34,41 @@ export function DashboardTabView() {
         ? `/api/sessions/${encodeURIComponent(sessionId)}/dashboard`
         : null,
       fetchDashboard,
-      // Poll so dashboards rendered by other chats in this session show up.
-      { refreshInterval: 4000, revalidateOnFocus: true },
+      // Slow poll as a fallback; the SSE stream below drives live updates.
+      { refreshInterval: 30_000, revalidateOnFocus: true },
     );
+
+  // Subscribe to live dashboard updates pushed by other chats in the session.
+  useEffect(() => {
+    if (!sessionId) {
+      return;
+    }
+    const source = new EventSource(
+      `/api/sessions/${encodeURIComponent(sessionId)}/dashboard/stream`,
+    );
+    source.addEventListener("update", () => {
+      void mutate();
+    });
+    // EventSource auto-reconnects on error; SWR polling covers any gaps.
+    return () => source.close();
+  }, [sessionId, mutate]);
+
+  const handleAction = useCallback(
+    (actionName: string, actionParams?: Record<string, unknown>) => {
+      if (actionName === "refresh_dashboard") {
+        void mutate();
+        return;
+      }
+      if (actionName === "notify") {
+        const message =
+          typeof actionParams?.message === "string"
+            ? actionParams.message
+            : "Notification";
+        toast(message);
+      }
+    },
+    [mutate],
+  );
 
   const spec = data?.spec ?? null;
 
@@ -85,9 +119,9 @@ export function DashboardTabView() {
 
         {!isLoading && !error && spec && (
           <div className="mx-auto max-w-5xl p-4">
-            <Renderer
+            <DashboardRenderer
               spec={spec as unknown as Spec}
-              registry={dashboardRegistry}
+              onAction={handleAction}
             />
           </div>
         )}

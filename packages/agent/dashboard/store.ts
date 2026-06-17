@@ -20,6 +20,12 @@ export interface DashboardElement {
   type: string;
   props?: Record<string, unknown>;
   children?: string[];
+  /** Event -> action bindings for interactive components. */
+  on?: Record<string, unknown>;
+  /** Optional visibility condition. */
+  visible?: unknown;
+  /** Forward-compatible passthrough for other json-render element fields. */
+  [key: string]: unknown;
 }
 
 /** A json-render spec: a root element id plus a flat map of elements. */

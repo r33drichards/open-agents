@@ -21,21 +21,40 @@ function getStore(experimental_context: unknown): DashboardStore {
   return store;
 }
 
-const elementSchema = z.object({
-  type: z
-    .string()
-    .describe(
-      "Component name from the Dashboard UI catalog (e.g. Card, Text).",
-    ),
-  props: z
-    .record(z.string(), z.unknown())
-    .optional()
-    .describe("Props for the component, matching the catalog schema."),
-  children: z
-    .array(z.string())
-    .optional()
-    .describe("Ids of child elements, rendered inside this element in order."),
-});
+const elementSchema = z
+  .object({
+    type: z
+      .string()
+      .describe(
+        "Component name from the Dashboard UI catalog (e.g. Card, Text, Button).",
+      ),
+    props: z
+      .record(z.string(), z.unknown())
+      .optional()
+      .describe("Props for the component, matching the catalog schema."),
+    children: z
+      .array(z.string())
+      .optional()
+      .describe(
+        "Ids of child elements, rendered inside this element in order.",
+      ),
+    on: z
+      .record(z.string(), z.unknown())
+      .optional()
+      .describe(
+        "Event -> action bindings for interactive components, e.g. " +
+          '{ "click": { "action": "setState", "params": { "path": "/tab", "value": "a" } } }. ' +
+          "Available actions are described in the Dashboard UI catalog section.",
+      ),
+    visible: z
+      .unknown()
+      .optional()
+      .describe(
+        "Optional visibility condition (json-render condition object).",
+      ),
+  })
+  // Forward-compatible: allow other json-render element fields (watch, repeat).
+  .catchall(z.unknown());
 
 export const renderDashboardInputSchema = z.object({
   spec: z
