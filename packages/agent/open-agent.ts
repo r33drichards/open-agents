@@ -12,6 +12,7 @@ import {
 import type { ScheduledTaskStore } from "./scheduling/store";
 import type { UserSkillStore } from "./skills/authoring";
 import type { SkillMetadata } from "./skills/types";
+import type { TeamStore } from "./team/store";
 import { buildSystemPrompt } from "./system-prompt";
 import {
   askUserQuestionTool,
@@ -23,11 +24,17 @@ import {
   editFileTool,
   globTool,
   grepTool,
+  listGroupTool,
   readFileTool,
+  readInboxTool,
   readSkillTool,
+  sendMessageTool,
+  sessionResultTool,
   skillTool,
+  spawnSessionTool,
   taskTool,
   todoWriteTool,
+  waitForMessageTool,
   webFetchTool,
   writeFileTool,
   writeSkillTool,
@@ -58,6 +65,8 @@ const callOptionsSchema = z.object({
   skillStore: z.custom<UserSkillStore>().optional(),
   // Durable store for scheduled tasks. Same in-process injection as skillStore.
   scheduledTaskStore: z.custom<ScheduledTaskStore>().optional(),
+  // Durable store for multi-agent team operations. Same in-process injection.
+  teamStore: z.custom<TeamStore>().optional(),
 });
 
 export type OpenAgentCallOptions = z.infer<typeof callOptionsSchema>;
@@ -85,6 +94,12 @@ const tools = {
   glob: globTool(),
   bash: bashTool(),
   task: taskTool,
+  spawn_session: spawnSessionTool,
+  list_group: listGroupTool,
+  session_result: sessionResultTool,
+  send_message: sendMessageTool,
+  read_inbox: readInboxTool,
+  wait_for_message: waitForMessageTool,
   ask_user_question: askUserQuestionTool,
   skill: skillTool,
   write_skill: writeSkillTool,
@@ -103,6 +118,12 @@ const tools = {
 // DB-backed, so it works here too.
 const mcpJsMetaTools = {
   todo_write: todoWriteTool,
+  spawn_session: spawnSessionTool,
+  list_group: listGroupTool,
+  session_result: sessionResultTool,
+  send_message: sendMessageTool,
+  read_inbox: readInboxTool,
+  wait_for_message: waitForMessageTool,
   ask_user_question: askUserQuestionTool,
   skill: skillTool,
   write_skill: writeSkillTool,
@@ -205,6 +226,7 @@ export const openAgent = new ToolLoopAgent({
         subagentModel,
         skillStore: options.skillStore,
         scheduledTaskStore: options.scheduledTaskStore,
+        teamStore: options.teamStore,
       },
     };
   },

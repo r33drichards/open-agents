@@ -20,6 +20,19 @@ export type {
   ScheduledTaskStore,
   ScheduleKind,
 } from "./scheduling/store";
+// Multi-agent team exports
+export type {
+  AgentTeamMessageKind,
+  AgentTeamMessageRecord,
+  AgentTeamMessageSenderRole,
+  AgentTeamRole,
+  SendMessageInput,
+  SessionResult,
+  SpawnedSessionRecord,
+  SpawnedSessionState,
+  SpawnSessionInput,
+  TeamStore,
+} from "./team/store";
 // Skills exports
 export type { UserSkillRecord, UserSkillStore } from "./skills/authoring";
 export { discoverSkills, parseSkillFrontmatter } from "./skills/discovery";

@@ -1021,6 +1021,7 @@ const runAgentStep = async (
     await import("@/lib/skills/user-skill-store");
   const { createScheduledTaskStore } =
     await import("@/lib/scheduling/scheduled-task-store");
+  const { createTeamStore } = await import("@/lib/agents/team-store");
 
   const abortController = new AbortController();
   const stopMonitor = startStopMonitor(workflowRunId, abortController);
@@ -1058,6 +1059,7 @@ const runAgentStep = async (
           sessionId,
           chatId,
         }),
+        teamStore: createTeamStore({ userId, sessionId, chatId }),
       },
       abortSignal: abortController.signal,
     });
