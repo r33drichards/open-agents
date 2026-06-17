@@ -96,3 +96,21 @@ export async function getGroupSessions(groupId: string) {
     where: eq(sessions.groupId, groupId),
   });
 }
+
+/**
+ * Resolve the group a session participates in: its stamped membership, or, if
+ * absent, the group it leads. Returns null when the session is not in any team.
+ */
+export async function getSessionGroupId(
+  sessionId: string,
+): Promise<string | null> {
+  const session = await db.query.sessions.findFirst({
+    where: eq(sessions.id, sessionId),
+    columns: { groupId: true },
+  });
+  if (session?.groupId) {
+    return session.groupId;
+  }
+  const led = await getAgentGroupByLeaderSessionId(sessionId);
+  return led?.id ?? null;
+}

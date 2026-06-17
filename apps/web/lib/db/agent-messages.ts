@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, asc, eq, gt, isNull, or } from "drizzle-orm";
+import { and, asc, desc, eq, gt, isNull, or } from "drizzle-orm";
 import { agentMessages, type NewAgentMessage } from "./schema";
 import { db } from "./client";
 
@@ -77,6 +77,19 @@ export async function markInboxRead(params: {
         eq(agentMessages.status, "unread"),
       ),
     );
+}
+
+/** Lists a group's messages (newest first) for display in the chat UI. */
+export async function listGroupMessages(params: {
+  groupId: string;
+  limit?: number;
+}) {
+  const query = db
+    .select()
+    .from(agentMessages)
+    .where(eq(agentMessages.groupId, params.groupId))
+    .orderBy(desc(agentMessages.createdAt));
+  return params.limit ? query.limit(params.limit) : query;
 }
 
 /**
