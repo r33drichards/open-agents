@@ -63,6 +63,14 @@ export const renderDashboardInputSchema = z.object({
       elements: z
         .record(z.string(), elementSchema)
         .describe("Flat map of element id -> element."),
+      state: z
+        .record(z.string(), z.unknown())
+        .optional()
+        .describe(
+          "Optional initial state model the UI reads via $state/$bindState/" +
+            "$bindItem/repeat. Include any data your components reference here, " +
+            "with realistic sample values.",
+        ),
     })
     .describe("A json-render spec describing the dashboard to display."),
 });

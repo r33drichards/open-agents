@@ -6,7 +6,7 @@
  */
 import "server-only";
 import type { DashboardSpec, DashboardStore } from "@open-agents/agent";
-import { dashboardCatalog } from "./catalog";
+import { validateDashboardSpec } from "./catalog";
 import {
   getSessionDashboard,
   upsertSessionDashboard,
@@ -25,7 +25,7 @@ export function createDashboardStore(opts: {
     async set(spec: DashboardSpec): Promise<void> {
       // Catalog-aware validation: rejects unknown components and props that
       // don't match the catalog schema, not just structural issues.
-      const result = dashboardCatalog.validate(spec);
+      const result = validateDashboardSpec(spec);
       if (!result.success) {
         const detail =
           result.error?.issues

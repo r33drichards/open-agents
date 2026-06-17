@@ -32,6 +32,12 @@ export interface DashboardElement {
 export interface DashboardSpec {
   root: string;
   elements: Record<string, DashboardElement>;
+  /**
+   * Optional initial state model, read by components via `$state`/`$bindState`/
+   * `$bindItem` and by `repeat`/`visible`. The host validates it against the
+   * json-render catalog before persisting.
+   */
+  state?: Record<string, unknown>;
 }
 
 /**
