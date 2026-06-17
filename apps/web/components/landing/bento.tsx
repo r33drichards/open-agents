@@ -1,5 +1,3 @@
-import { SignInButton } from "@/components/auth/sign-in-button";
-
 type BentoItem = {
   readonly id: string;
   readonly title: string;
@@ -84,9 +82,6 @@ export function LandingBento() {
               Built on production-grade primitives from the Vercel ecosystem. No
               synthetic demos &mdash; real infrastructure for real agents.
             </p>
-            <div className="mt-6">
-              <SignInButton />
-            </div>
           </div>
         </div>
 
