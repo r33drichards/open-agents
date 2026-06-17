@@ -119,8 +119,13 @@ export function DashboardTabView() {
 
         {!isLoading && !error && spec && (
           <div className="mx-auto max-w-5xl p-4">
+            {/* Seed the renderer's state model from the spec's top-level
+                `state` field so $state/$bindState/repeat components render with
+                the data the model provided (the renderer reads the `state`
+                prop, not `spec.state`). */}
             <DashboardRenderer
               spec={spec as unknown as Spec}
+              state={spec.state}
               onAction={handleAction}
             />
           </div>
