@@ -2,11 +2,13 @@
  * State for connecting to / restoring an mcp-js (mcp-v8) sandbox.
  *
  * The mcp-js runtime is a remote V8 JavaScript execution server reached over
- * HTTP. State accumulates server-side under a stable `session` label: each
- * execution snapshots the V8 heap automatically, and a later run with the same
- * `session` restores that session's most-recent heap. The client therefore only
- * needs to persist the unchanging `session` — never the content-addressed heap
- * key, which changes on every run.
+ * HTTP. State accumulates server-side under a stable `session` label across two
+ * independent axes the server may enable: a per-session `/work` filesystem and
+ * (optionally) V8 heap snapshots. A later run with the same `session` restores
+ * that session's most-recent state automatically, so the client only needs to
+ * persist the unchanging `session` — never the content-addressed keys, which
+ * change on every run. The deployed server runs filesystem-only (no heap), so
+ * cross-call state should live in `/work`, not in JS globals.
  */
 import type { McpJsRuntimeConfig } from "./runtime-config.ts";
 
@@ -14,9 +16,9 @@ export interface McpJsState {
   /** Base URL of the mcp-v8 server, e.g. `https://mcp-v8.internal:8080`. */
   baseUrl: string;
   /**
-   * Stable session label. The server restores this session's latest heap on
-   * each run, so JS globals persist across executions without the client
-   * tracking heap keys.
+   * Stable session label. The server restores this session's latest state
+   * (filesystem, and heap if enabled) on each run, so persistence works without
+   * the client tracking content-addressed keys.
    */
   session?: string;
   /**

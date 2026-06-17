@@ -40,6 +40,12 @@ export interface BuildWorkerArgsParams {
    * inherits AWS_* credentials from the parent process environment).
    */
   fsSnapshots?: McpJsFsSnapshotConfig;
+  /**
+   * Persist the V8 heap (JS globals across runs). Off by default to match the
+   * deployed (fs-only) config; heap snapshots disable WebAssembly so they are
+   * incompatible with WASM modules. Heap and fs are independent axes.
+   */
+  heapSnapshots?: boolean;
 }
 
 /**
@@ -47,19 +53,27 @@ export interface BuildWorkerArgsParams {
  *
  * The coordinator ("main") node runs as a voter and owns the write quorum;
  * per-session workers join as non-voting learners so their churn never affects
- * the cluster's ability to commit (see the mcp-js learner support). Heaps are
- * shared via `--directory-path`; session metadata is replicated through Raft.
+ * the cluster's ability to commit (see the mcp-js learner support). Session
+ * metadata is replicated through Raft.
+ *
+ * Heap and filesystem persistence are independent axes (mcp-v8 `--heap-store` /
+ * `--fs-store`, each `none|dir|s3`). The shared `--s3-bucket` backs whichever
+ * axes use `s3`. In this clustered mode the fs blob store must be shared, so fs
+ * persistence requires S3. Heap is off by default (heap snapshots disable WASM).
  * Capability policies are emitted only for capabilities granted an OPA policy
  * URL — mcp-v8 is secure-by-default, so anything else stays denied.
  */
 export function buildMcpV8WorkerArgs(params: BuildWorkerArgsParams): string[] {
   const portFlag = params.transport === "sse" ? "sse-port" : "http-port";
   const fs = params.fsSnapshots;
-  // `--s3-bucket` selects the heap backend AND backs the fs blob store, and it
-  // is mutually exclusive with `--directory-path`. So when fs snapshots use S3,
-  // route heaps to S3 too (with a local write-through cache) and omit the
-  // file-backed `--directory-path`.
-  const useS3 = Boolean(fs?.enabled && fs.s3Bucket);
+  const heapOn = params.heapSnapshots ?? false;
+  const fsOn = Boolean(fs?.enabled);
+  // The shared --s3-bucket backs any axis set to `s3`. fs in this clustered mode
+  // must use shared storage (S3); heap reuses the same bucket when one is set,
+  // else a node-local shared directory.
+  const bucket = fs?.s3Bucket;
+  const heapOnS3 = heapOn && Boolean(bucket);
+  const fsOnS3 = fsOn && Boolean(bucket);
 
   const args = [
     `--${portFlag}=${params.httpPort}`,
@@ -68,8 +82,14 @@ export function buildMcpV8WorkerArgs(params: BuildWorkerArgsParams): string[] {
     `--node-id=${params.nodeId}`,
     `--advertise-addr=${params.advertiseHost}:${params.clusterPort}`,
   ];
-  if (!useS3) {
-    args.push(`--directory-path=${params.storageDir}/heaps`);
+
+  // Heap axis (off by default).
+  if (heapOn) {
+    if (heapOnS3) {
+      args.push("--heap-store=s3");
+    } else {
+      args.push("--heap-store=dir", `--heap-dir=${params.storageDir}/heaps`);
+    }
   }
 
   if (params.join) {
@@ -79,16 +99,22 @@ export function buildMcpV8WorkerArgs(params: BuildWorkerArgsParams): string[] {
     args.push("--join-as-learner");
   }
 
-  if (fs?.enabled) {
-    args.push("--enable-fs-snapshots");
-    // Cluster mode requires a shared blob store. The worker reads AWS_* creds
-    // (and AWS_ENDPOINT_URL / AWS_S3_FORCE_PATH_STYLE for MinIO) from its
-    // inherited environment.
-    if (fs.s3Bucket) {
-      args.push(`--s3-bucket=${fs.s3Bucket}`);
-      // Per-node local write-through cache for the shared S3 blob store.
-      args.push(`--cache-dir=${params.storageDir}/fs-cache/${params.nodeId}`);
+  // Filesystem axis. Cluster mode requires a shared (S3) blob store; the worker
+  // reads AWS_* creds (and AWS_ENDPOINT_URL / AWS_S3_FORCE_PATH_STYLE for MinIO)
+  // from its inherited environment.
+  if (fsOn) {
+    if (fsOnS3) {
+      args.push("--fs-store=s3");
+    } else {
+      args.push("--fs-store=dir", `--fs-dir=${params.storageDir}/fs-blobs`);
     }
+  }
+
+  // Shared S3 bucket + per-node write-through cache, emitted once for whichever
+  // axes use s3.
+  if ((heapOnS3 || fsOnS3) && bucket) {
+    args.push(`--s3-bucket=${bucket}`);
+    args.push(`--cache-dir=${params.storageDir}/s3-cache/${params.nodeId}`);
   }
 
   const policiesJson = buildPoliciesJson(

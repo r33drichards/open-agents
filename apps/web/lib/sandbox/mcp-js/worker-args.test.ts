@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { buildMcpV8WorkerArgs } from "./worker-args";
 
 describe("buildMcpV8WorkerArgs", () => {
-  test("emits a coordinator (voter) node's cluster flags", () => {
+  test("emits a coordinator (voter) node's cluster flags (heap+fs off by default)", () => {
     const args = buildMcpV8WorkerArgs({
       httpPort: 4321,
       clusterPort: 4322,
@@ -13,7 +13,6 @@ describe("buildMcpV8WorkerArgs", () => {
 
     expect(args).toEqual([
       "--http-port=4321",
-      "--directory-path=/srv/mcp-js/heaps",
       "--session-db-path=/srv/mcp-js/sessions/main",
       "--cluster-port=4322",
       "--node-id=main",
@@ -35,7 +34,6 @@ describe("buildMcpV8WorkerArgs", () => {
 
     expect(args).toEqual([
       "--sse-port=5001",
-      "--directory-path=/srv/mcp-js/heaps",
       "--session-db-path=/srv/mcp-js/sessions/sess-abc",
       "--cluster-port=5002",
       "--node-id=sess-abc",
@@ -43,6 +41,38 @@ describe("buildMcpV8WorkerArgs", () => {
       "--join=127.0.0.1:4322",
       "--join-as-learner",
     ]);
+  });
+
+  test("heap-on without S3 uses a node-local heap dir", () => {
+    const args = buildMcpV8WorkerArgs({
+      httpPort: 4321,
+      clusterPort: 4322,
+      nodeId: "main",
+      storageDir: "/srv/mcp-js",
+      advertiseHost: "127.0.0.1",
+      heapSnapshots: true,
+    });
+
+    expect(args).toContain("--heap-store=dir");
+    expect(args).toContain("--heap-dir=/srv/mcp-js/heaps");
+    expect(args.some((a) => a.startsWith("--fs-store"))).toBe(false);
+  });
+
+  test("fs-on with S3 emits --fs-store s3 + shared bucket + per-node cache", () => {
+    const args = buildMcpV8WorkerArgs({
+      httpPort: 5001,
+      clusterPort: 5002,
+      nodeId: "sess-abc",
+      storageDir: "/srv/mcp-js",
+      advertiseHost: "127.0.0.1",
+      fsSnapshots: { enabled: true, s3Bucket: "mcpjs-fs" },
+    });
+
+    expect(args).toContain("--fs-store=s3");
+    expect(args).toContain("--s3-bucket=mcpjs-fs");
+    expect(args).toContain("--cache-dir=/srv/mcp-js/s3-cache/sess-abc");
+    // heap stays off by default → no heap flags.
+    expect(args.some((a) => a.startsWith("--heap-store"))).toBe(false);
   });
 
   test("translates OPA-backed capabilities into --policies-json", () => {

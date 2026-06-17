@@ -70,6 +70,8 @@ export interface SubprocessWorkerProviderOptions {
   coordinatorClusterPort?: number;
   /** Per-session content-addressed filesystem snapshot config (optional). */
   fsSnapshots?: McpJsFsSnapshotConfig;
+  /** Persist the V8 heap (globals across runs). Off by default (matches deploy). */
+  heapSnapshots?: boolean;
   /** How long to wait for a worker's HTTP API to come up. */
   readinessTimeoutMs?: number;
   /** Delay between readiness polls. */
@@ -179,6 +181,7 @@ export class SubprocessWorkerProvider implements McpJsWorkerProvider {
   private readonly coordinatorHttpPort: number;
   private readonly coordinatorClusterPort: number;
   private readonly fsSnapshots: McpJsFsSnapshotConfig | undefined;
+  private readonly heapSnapshots: boolean;
   private readonly readinessTimeoutMs: number;
   private readonly readinessPollMs: number;
   private readonly spawn: WorkerSpawn;
@@ -201,6 +204,7 @@ export class SubprocessWorkerProvider implements McpJsWorkerProvider {
     this.coordinatorClusterPort =
       options.coordinatorClusterPort ?? DEFAULT_COORDINATOR_CLUSTER_PORT;
     this.fsSnapshots = resolveFsSnapshots(options.fsSnapshots);
+    this.heapSnapshots = options.heapSnapshots ?? false;
     this.readinessTimeoutMs =
       options.readinessTimeoutMs ?? DEFAULT_READINESS_TIMEOUT_MS;
     this.readinessPollMs = options.readinessPollMs ?? DEFAULT_READINESS_POLL_MS;
@@ -274,6 +278,7 @@ export class SubprocessWorkerProvider implements McpJsWorkerProvider {
       // node with snapshots on needs the shared blob store, and the leader
       // participates in cluster-wide label replication.
       fsSnapshots: this.fsSnapshots,
+      heapSnapshots: this.heapSnapshots,
     });
 
     const proc = this.spawn(this.binaryPath, args);
@@ -330,6 +335,7 @@ export class SubprocessWorkerProvider implements McpJsWorkerProvider {
       transport: "sse",
       runtimeConfig: params.runtimeConfig,
       fsSnapshots: this.fsSnapshots,
+      heapSnapshots: this.heapSnapshots,
     });
 
     const proc = this.spawn(this.binaryPath, args);
