@@ -2,6 +2,7 @@ import type { SandboxState } from "@open-agents/sandbox";
 import { stepCountIs, ToolLoopAgent, type ToolSet } from "ai";
 import { z } from "zod";
 import { addCacheControl } from "./context-management";
+import type { DashboardStore } from "./dashboard/store";
 import { getToolboxTools } from "./mcp";
 import {
   type GatewayModelId,
@@ -25,6 +26,7 @@ import {
   grepTool,
   readFileTool,
   readSkillTool,
+  renderDashboardTool,
   skillTool,
   taskTool,
   todoWriteTool,
@@ -58,6 +60,9 @@ const callOptionsSchema = z.object({
   skillStore: z.custom<UserSkillStore>().optional(),
   // Durable store for scheduled tasks. Same in-process injection as skillStore.
   scheduledTaskStore: z.custom<ScheduledTaskStore>().optional(),
+  // Durable store for the session's shared generative-UI dashboard. Same
+  // in-process injection as the other stores.
+  dashboardStore: z.custom<DashboardStore>().optional(),
 });
 
 export type OpenAgentCallOptions = z.infer<typeof callOptionsSchema>;
@@ -94,6 +99,7 @@ const tools = {
   cron_list: cronListTool,
   cron_delete: cronDeleteTool,
   web_fetch: webFetchTool,
+  render_dashboard: renderDashboardTool,
 } satisfies ToolSet;
 
 // For the JS-only mcp-v8 sandbox, the file/shell tools are replaced by the
@@ -112,6 +118,7 @@ const mcpJsMetaTools = {
   cron_list: cronListTool,
   cron_delete: cronDeleteTool,
   web_fetch: webFetchTool,
+  render_dashboard: renderDashboardTool,
 } satisfies ToolSet;
 
 export const openAgent = new ToolLoopAgent({
@@ -205,6 +212,7 @@ export const openAgent = new ToolLoopAgent({
         subagentModel,
         skillStore: options.skillStore,
         scheduledTaskStore: options.scheduledTaskStore,
+        dashboardStore: options.dashboardStore,
       },
     };
   },
