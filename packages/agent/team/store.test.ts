@@ -20,6 +20,8 @@ interface FakeState {
 function fakeStore(state: FakeState): TeamStore {
   let counter = 0;
   return {
+    groupId: () =>
+      Promise.resolve(state.sessions.length > 0 ? "group-1" : null),
     spawn: (input) => {
       if (state.spawnError) {
         return Promise.reject(new Error(state.spawnError));
@@ -169,6 +171,7 @@ describe("listGroup / getSessionResult", () => {
     expect(result).toMatchObject({ success: true });
     if (result.success && "sessions" in result) {
       expect(result.sessions).toHaveLength(1);
+      expect(result.groupId).toBe("group-1");
     }
   });
 

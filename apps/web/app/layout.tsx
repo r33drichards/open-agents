@@ -79,7 +79,10 @@ export default function RootLayout({
           dangerouslySetInnerHTML={{ __html: themeInitializationScript }}
         />
         <Providers>{children}</Providers>
-        <Analytics />
+        {/* @vercel/analytics injects /_vercel/insights/script.js, which only
+            exists on Vercel infra. Rendering it on other hosts (e.g. Railway)
+            404s the script on every page load. Gate it to Vercel deployments. */}
+        {process.env.VERCEL === "1" && <Analytics />}
       </body>
     </html>
   );

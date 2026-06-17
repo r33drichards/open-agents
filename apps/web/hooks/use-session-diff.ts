@@ -70,14 +70,14 @@ export function useSessionDiff(
     };
   }
 
-  if (cachedData) {
+  if (cachedData?.data) {
     return {
       diff: cachedData.data,
       isLoading: false,
       isValidating: false,
       error: null,
       isStale: true,
-      cachedAt: new Date(cachedData.cachedAt),
+      cachedAt: cachedData.cachedAt ? new Date(cachedData.cachedAt) : null,
       refresh: async () => undefined,
     };
   }

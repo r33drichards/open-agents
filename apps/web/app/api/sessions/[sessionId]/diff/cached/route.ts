@@ -9,9 +9,9 @@ type RouteContext = {
 };
 
 export type CachedDiffResponse = {
-  data: DiffResponse;
-  cachedAt: string;
-  isStale: true;
+  data: DiffResponse | null;
+  cachedAt: string | null;
+  isStale: boolean;
 };
 
 export async function GET(_req: Request, context: RouteContext) {
@@ -32,11 +32,17 @@ export async function GET(_req: Request, context: RouteContext) {
 
   const { sessionRecord } = sessionContext;
 
+  // No cached diff yet (e.g. a session with no sandbox activity). Return an
+  // empty 200 rather than a 404 so the client's polling SWR hook treats it as
+  // "no diff" instead of an error — a 404 here logged a console error on every
+  // poll for sandboxless sessions.
   if (!sessionRecord.cachedDiff) {
-    return Response.json(
-      { error: "No cached diff available" },
-      { status: 404 },
-    );
+    const empty: CachedDiffResponse = {
+      data: null,
+      cachedAt: null,
+      isStale: false,
+    };
+    return Response.json(empty);
   }
 
   // Note: cachedDiff is stored as jsonb and cast to DiffResponse without runtime validation.

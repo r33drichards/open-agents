@@ -80,6 +80,8 @@ export interface SessionResult {
  */
 export interface TeamStore {
   spawn(input: SpawnSessionInput): Promise<SpawnedSessionRecord>;
+  /** The id of the group this session belongs to, or null if it has none yet. */
+  groupId(): Promise<string | null>;
   list(): Promise<SpawnedSessionRecord[]>;
   status(sessionId: string): Promise<SpawnedSessionRecord | null>;
   result(sessionId: string): Promise<SessionResult>;
@@ -95,7 +97,11 @@ export interface TeamStore {
 
 export type TeamResult =
   | { success: true; session: SpawnedSessionRecord }
-  | { success: true; sessions: SpawnedSessionRecord[] }
+  | {
+      success: true;
+      sessions: SpawnedSessionRecord[];
+      groupId: string | null;
+    }
   | { success: true; result: SessionResult }
   | { success: true; messages: AgentTeamMessageRecord[] }
   | { success: true; message: AgentTeamMessageRecord | null }
@@ -135,8 +141,11 @@ export async function spawnSession(
 /** List sessions in the leader's group with their current state. */
 export async function listGroup(store: TeamStore): Promise<TeamResult> {
   try {
-    const sessions = await store.list();
-    return { success: true, sessions };
+    const [sessions, groupId] = await Promise.all([
+      store.list(),
+      store.groupId(),
+    ]);
+    return { success: true, sessions, groupId };
   } catch (error) {
     return { success: false, error: errorMessage(error) };
   }

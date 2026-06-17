@@ -68,7 +68,7 @@ Be explicit and self-contained in the instructions — the worker runs without y
 
 export const listGroupTool = tool({
   description:
-    "List the sessions in your team (leader + spawned workers/peers) with their current run state (running/completed/failed).",
+    "List your team's group id and the sessions in it (leader + spawned workers/peers) with their current run state (running/completed/failed).",
   inputSchema: z.object({}),
   execute: (_input, { experimental_context }) =>
     listGroup(getStore(experimental_context, "list_group")),

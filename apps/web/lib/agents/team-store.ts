@@ -108,6 +108,7 @@ export function createTeamStore(params: {
   }
 
   return {
+    groupId: () => resolveGroupId(),
     spawn: async (input: SpawnSessionInput): Promise<SpawnedSessionRecord> => {
       const depth = await getSessionDepth(
         params.sessionId,
