@@ -295,6 +295,13 @@
       "when": 1781702221671,
       "tag": "0041_swift_doctor_faustus",
       "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1781730785885,
+      "tag": "0042_cooing_power_man",
+      "breakpoints": true
     }
   ]
 }

@@ -276,6 +276,38 @@ export const chatMessages = pgTable("chat_messages", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+// "Steer inbox": messages the user submits while an agent run is already in
+// flight. The running chat workflow drains unconsumed rows between agent steps
+// (Claude-Code-style steering), appending them as user turns so the agent picks
+// them up without the user waiting for the turn to finish.
+export const chatSteerMessages = pgTable(
+  "chat_steer_messages",
+  {
+    id: text("id").primaryKey(),
+    chatId: text("chat_id")
+      .notNull()
+      .references(() => chats.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    // WebAgentUIMessage["parts"] for the queued user message (text/files/snippets).
+    parts: jsonb("parts").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    // Set when the workflow has drained this row into the conversation.
+    consumedAt: timestamp("consumed_at"),
+  },
+  (table) => [
+    // Drain query: unconsumed rows for a chat, oldest first.
+    index("chat_steer_messages_chat_id_created_at_idx").on(
+      table.chatId,
+      table.createdAt,
+    ),
+  ],
+);
+
+export type ChatSteerMessage = typeof chatSteerMessages.$inferSelect;
+export type NewChatSteerMessage = typeof chatSteerMessages.$inferInsert;
+
 export const chatReads = pgTable(
   "chat_reads",
   {

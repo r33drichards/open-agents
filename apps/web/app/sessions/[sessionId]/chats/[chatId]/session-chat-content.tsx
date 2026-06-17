@@ -1903,6 +1903,83 @@ export function SessionChatContent({
     [chatInfo.id, sendMessage, setChatStreaming],
   );
 
+  // Set by the ⌘/Ctrl+Enter keybinding so the form submit handler knows to
+  // interrupt the running turn rather than steer it.
+  const interruptOnSubmitRef = useRef(false);
+
+  // Steer (default while a run is in flight): enqueue the message to the
+  // durable steer inbox so the running workflow picks it up at its next step.
+  // Optimistically render it inline immediately; reconcile its id with the
+  // server's so the persisted copy doesn't duplicate it on reload.
+  const steerMessage = useCallback(
+    async (parts: WebAgentUIMessage["parts"]) => {
+      const tempId = `steer-${crypto.randomUUID()}`;
+      const optimistic: WebAgentUIMessage = {
+        role: "user",
+        id: tempId,
+        parts,
+      };
+      setMessages((current) => [...current, optimistic]);
+      try {
+        const res = await fetch(
+          `/api/sessions/${session.id}/chats/${chatInfo.id}/steer`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ parts }),
+          },
+        );
+        if (!res.ok) {
+          throw new Error(`Failed to steer (${res.status})`);
+        }
+        const { queued } = (await res.json()) as { queued: { id: string } };
+        setMessages((current) =>
+          current.map((message) =>
+            message.id === tempId ? { ...message, id: queued.id } : message,
+          ),
+        );
+      } catch (error) {
+        console.error("Failed to steer message:", error);
+        setMessages((current) =>
+          current.filter((message) => message.id !== tempId),
+        );
+      }
+    },
+    [chatInfo.id, session.id, setMessages],
+  );
+
+  // Interrupt override (⌘/Ctrl+Enter): cancel the in-flight run, then start a
+  // fresh turn with the message. Retries the send because the cancelled run
+  // needs a moment to release the chat's active-stream slot.
+  const interruptAndSend = useCallback(
+    async (message: Parameters<typeof sendMessageWithPendingState>[0]) => {
+      stopChatStream();
+      setHasPendingResponse(false);
+      void setChatStreaming(chatInfo.id, false);
+
+      let lastError: unknown;
+      for (let attempt = 0; attempt < 6; attempt++) {
+        await new Promise((resolve) =>
+          setTimeout(resolve, attempt === 0 ? 300 : 400),
+        );
+        try {
+          setUserStopped(false);
+          await sendMessageWithPendingState(message);
+          return;
+        } catch (error) {
+          lastError = error;
+        }
+      }
+      console.error("Interrupt-and-send failed after retries:", lastError);
+    },
+    [
+      chatInfo.id,
+      sendMessageWithPendingState,
+      setChatStreaming,
+      stopChatStream,
+    ],
+  );
+
   const handleFixChecks = useCallback(
     async (failedRuns: CheckRun[]) => {
       const names = failedRuns.map((run) => run.name).join(", ");
@@ -3859,11 +3936,14 @@ export function SessionChatContent({
                           e.preventDefault();
                           // When inline question is active, don't send a chat message
                           if (showInlineQuestion) return;
-                          if (
-                            isArchived ||
-                            isChatInFlight ||
-                            hasPendingResponse
-                          ) {
+                          // A run already in flight means this submit steers the
+                          // agent (default) or interrupts it (⌘/Ctrl+Enter sets
+                          // the ref) rather than starting a brand-new turn.
+                          const isRunning =
+                            isChatInFlight || hasPendingResponse;
+                          const shouldInterrupt = interruptOnSubmitRef.current;
+                          interruptOnSubmitRef.current = false;
+                          if (isArchived) {
                             return;
                           }
                           const hasContent =
@@ -3914,9 +3994,46 @@ export function SessionChatContent({
                             };
                           }
 
+                          // Serializable parts for the steer path (snippets and
+                          // files travel as parts, not the {text, files} form).
+                          const steerParts: WebAgentUIMessage["parts"] = [];
+                          if (messageText.trim()) {
+                            steerParts.push({
+                              type: "text" as const,
+                              text: messageText,
+                            });
+                          }
+                          if (files) {
+                            for (const f of files) {
+                              steerParts.push(f);
+                            }
+                          }
+                          for (const attachment of textAttachments) {
+                            steerParts.push({
+                              type: "data-snippet" as const,
+                              id: attachment.id,
+                              data: {
+                                content: attachment.content,
+                                filename: attachment.filename,
+                              },
+                            });
+                          }
+
                           setInput("");
                           clearImages();
                           clearTextAttachments();
+
+                          // A run is in flight: steer it (default) or interrupt
+                          // it (⌘/Ctrl+Enter). Either way, skip the new-turn /
+                          // title-generation path below.
+                          if (isRunning) {
+                            if (shouldInterrupt) {
+                              await interruptAndSend(messagePayload);
+                            } else {
+                              await steerMessage(steerParts);
+                            }
+                            return;
+                          }
 
                           const isFirstChatInSession =
                             initialIsOnlyChatInSession;
@@ -4060,7 +4177,9 @@ export function SessionChatContent({
                             placeholder={
                               showInlineQuestion
                                 ? inlineQuestion.placeholder
-                                : "Request changes or ask a question..."
+                                : isChatInFlight || hasPendingResponse
+                                  ? "Steer the agent… (⌘↵ to interrupt)"
+                                  : "Request changes or ask a question..."
                             }
                             rows={1}
                             onFocus={handleTextareaFocus}
@@ -4092,10 +4211,16 @@ export function SessionChatContent({
                               if (
                                 e.key === "Enter" &&
                                 !e.shiftKey &&
-                                !isIosDevice &&
-                                !isChatInFlight &&
-                                !hasPendingResponse
+                                !isIosDevice
                               ) {
+                                // ⌘/Ctrl+Enter while a run is in flight = interrupt
+                                // override; plain Enter = steer (handled in submit).
+                                if (
+                                  (e.metaKey || e.ctrlKey) &&
+                                  (isChatInFlight || hasPendingResponse)
+                                ) {
+                                  interruptOnSubmitRef.current = true;
+                                }
                                 e.preventDefault();
                                 if (!isArchived) {
                                   e.currentTarget.form?.requestSubmit();
@@ -4261,20 +4386,45 @@ export function SessionChatContent({
                                 </span>
                               </Button>
                             ) : isChatInFlight || hasPendingResponse ? (
-                              <Button
-                                type="button"
-                                size="icon"
-                                onClick={() => {
-                                  stopChatStream();
-                                  setHasPendingResponse(false);
-                                  setUserStopped(true);
-                                  void setChatStreaming(chatInfo.id, false);
-                                }}
-                                className="h-8 w-8 rounded-full bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                                style={{ touchAction: "manipulation" }}
-                              >
-                                <Square className="h-3 w-3 fill-current" />
-                              </Button>
+                              <>
+                                {/* Steer: send a message into the running turn.
+                                    Enter steers; ⌘/Ctrl+Enter interrupts. */}
+                                {(input.trim() ||
+                                  images.length > 0 ||
+                                  textAttachments.length > 0) && (
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <span>
+                                        <Button
+                                          type="submit"
+                                          size="icon"
+                                          disabled={isArchived}
+                                          className="h-8 w-8 rounded-full bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-30"
+                                        >
+                                          <ArrowUp className="h-4 w-4" />
+                                        </Button>
+                                      </span>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      Enter to steer · ⌘↵ to interrupt
+                                    </TooltipContent>
+                                  </Tooltip>
+                                )}
+                                <Button
+                                  type="button"
+                                  size="icon"
+                                  onClick={() => {
+                                    stopChatStream();
+                                    setHasPendingResponse(false);
+                                    setUserStopped(true);
+                                    void setChatStreaming(chatInfo.id, false);
+                                  }}
+                                  className="h-8 w-8 rounded-full bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                  style={{ touchAction: "manipulation" }}
+                                >
+                                  <Square className="h-3 w-3 fill-current" />
+                                </Button>
+                              </>
                             ) : (
                               <Tooltip>
                                 <TooltipTrigger asChild>

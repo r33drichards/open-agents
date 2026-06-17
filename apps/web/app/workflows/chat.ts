@@ -140,6 +140,52 @@ const convertMessages = async (
   });
 };
 
+/**
+ * Drain any messages the user queued (steered) during this run. Called between
+ * agent steps: the unconsumed steer inbox is claimed atomically, each message
+ * is persisted as a real user turn, and its model-message form is returned so
+ * the caller can append it to the running conversation. The agent then picks it
+ * up on its very next step — Claude-Code-style steering without waiting for the
+ * turn to finish.
+ */
+const drainSteerStep = async (
+  chatId: string,
+): Promise<{
+  uiMessages: WebAgentUIMessage[];
+  modelMessages: ModelMessage[];
+}> => {
+  "use step";
+
+  const { drainSteerMessages } = await import("@/lib/db/chat-steer");
+  const queued = await drainSteerMessages(chatId);
+  if (queued.length === 0) {
+    return { uiMessages: [], modelMessages: [] };
+  }
+
+  const uiMessages: WebAgentUIMessage[] = queued.map((entry) => ({
+    role: "user",
+    id: entry.id,
+    parts: entry.parts as WebAgentUIMessage["parts"],
+  }));
+
+  // Persist each steered message as a user turn so transcript ordering is
+  // correct on reload (assistant-segment, user-steer, assistant-segment, …).
+  await Promise.all(
+    uiMessages.map((message) => persistUserMessage(chatId, message)),
+  );
+
+  const { webAgent } = await import("@/app/config");
+  const modelMessages = await convertToModelMessages<WebAgentUIMessage>(
+    uiMessages,
+    {
+      ignoreIncompleteToolCalls: true,
+      tools: webAgent.tools,
+    },
+  );
+
+  return { uiMessages, modelMessages };
+};
+
 async function resolveChatModelRuntime(params: {
   userId: string;
   sessionId: string;
@@ -602,7 +648,10 @@ export async function runAgentWorkflow(options: Options) {
     throw new Error("runAgentWorkflow requires at least one message");
   }
 
-  const assistantId =
+  // Mutable because steering rotates the assistant message: when the user
+  // queues a message mid-run, the current assistant segment is finalized and a
+  // fresh assistant message is started for the agent's response to the steer.
+  let assistantId =
     latestMessage.role === "assistant"
       ? latestMessage.id
       : (options.assistantId ?? generateIdAi());
@@ -766,11 +815,43 @@ export async function runAgentWorkflow(options: Options) {
           : result.stepUsage;
       }
 
+      // Steering: pick up anything the user queued during this run before
+      // deciding whether to stop. A queued message means "keep going, here's
+      // more" — so it revives a run that would otherwise stop, and is injected
+      // mid-task when the agent is still looping.
+      const pausedForTool = shouldPauseForToolInteraction(
+        result.responseMessage?.parts ?? pendingAssistantResponse.parts,
+      );
+      const steer = pausedForTool
+        ? { uiMessages: [], modelMessages: [] }
+        : await drainSteerStep(options.chatId);
+
+      if (steer.uiMessages.length > 0) {
+        // Finalize the assistant segment produced so far and start a fresh
+        // assistant message for the agent's response to the steered input.
+        await persistAssistantMessage(options.chatId, pendingAssistantResponse);
+        modelMessages.push(...steer.modelMessages);
+
+        assistantId = generateIdAi();
+        pendingAssistantResponse = {
+          role: "assistant",
+          id: assistantId,
+          parts: [],
+          metadata: withModelMetadata(undefined, selectedModelId, modelId),
+        };
+        originalMessagesForStep = [
+          steer.uiMessages[steer.uiMessages.length - 1] as WebAgentUIMessage,
+        ];
+
+        if (options.maxSteps !== undefined && step + 1 >= options.maxSteps) {
+          exhaustedMaxSteps = true;
+          break;
+        }
+        continue;
+      }
+
       const shouldContinue =
-        result.finishReason === "tool-calls" &&
-        !shouldPauseForToolInteraction(
-          result.responseMessage?.parts ?? pendingAssistantResponse.parts,
-        );
+        result.finishReason === "tool-calls" && !pausedForTool;
 
       if (!shouldContinue) {
         break;
