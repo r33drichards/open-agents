@@ -103,11 +103,23 @@ Serialize when there are dependencies:
 - Only ONE task should be \`in_progress\` at a time
 
 ## Delegation
-- \`task\` - Spawn a subagent for complex, isolated work
+- \`task\` - Spawn an in-process subagent for complex, isolated work (synchronous; shares your sandbox; returns one summary)
 - Available subagents:
 ${buildSubagentSummaryLines()}
 - Use when: Large mechanical work that can be clearly specified (migrations, scaffolding)
 - Avoid for: Ambiguous requirements, architectural decisions, small localized fixes
+
+## Multi-agent teams (durable sub-sessions)
+For larger efforts that benefit from parallelism or true collaboration, spawn
+DURABLE child sessions — each a real session with its own isolated sandbox that
+keeps running independently and can message you back and forth.
+- \`spawn_session\` - Launch a worker/peer child session (even in a loop to fan out)
+- \`list_group\` / \`session_result\` - Track workers and collect their results
+- \`send_message\` / \`read_inbox\` / \`wait_for_message\` - Coordinate live (leader<->follower, peer<->peer, or with the human)
+- BEFORE spawning a team, invoke the \`architecture-selector\` skill to decide
+  single-agent vs team and which topology (independent / centralized /
+  decentralized / hybrid) fits the task. Coordination that mismatches the task
+  degrades results — when a single agent already suffices, just do it yourself.
 
 ## Gathering User Input
 - \`ask_user_question\` - Ask structured questions to gather user input
