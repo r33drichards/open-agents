@@ -24,9 +24,15 @@ export async function runDashboardQuery(params: {
 }): Promise<DashboardQueryResult> {
   const client = createMcpV8Client(params.baseUrl);
 
+  // run_js evaluates the snippet as an ES module, where a top-level `return` is
+  // a syntax error (but top-level await is allowed). The agent authors query
+  // `code` as a function body that `return`s its data, so wrap it in an async
+  // IIFE and await it — the awaited value becomes the run's result.
+  const wrapped = `await (async () => {\n${params.code}\n})()`;
+
   let result: Awaited<ReturnType<typeof client.runJs>>;
   try {
-    result = await client.runJs(params.code, {
+    result = await client.runJs(wrapped, {
       session: params.session,
       executionTimeoutSecs: QUERY_TIMEOUT_SECS,
     });
