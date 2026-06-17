@@ -147,6 +147,19 @@ export type McpJsFsSnapshotConfig = {
 export const MCP_JS_FS_SNAPSHOTS_ENABLED =
   process.env.MCP_JS_FS_SNAPSHOTS === "true";
 
+/**
+ * Whether subprocess-mode workers persist the V8 heap (JS globals across runs).
+ *
+ * Off by default: heap snapshots run in a V8 SnapshotCreator isolate that
+ * disables WebAssembly, and the deployed mcp-js runs heap-off (fs-only) so the
+ * bundled WASM languages work. Matching that locally keeps behaviour faithful —
+ * cross-call state lives in the per-session `/work` filesystem, not in globals.
+ * Set `MCP_JS_HEAP_SNAPSHOTS=true` to re-enable heap persistence (incompatible
+ * with WASM modules).
+ */
+export const MCP_JS_HEAP_SNAPSHOTS_ENABLED =
+  process.env.MCP_JS_HEAP_SNAPSHOTS === "true";
+
 export const MCP_JS_S3_BUCKET = process.env.MCP_JS_S3_BUCKET;
 
 /** Filesystem-snapshot config for spawned workers, or `enabled: false`. */
@@ -166,6 +179,7 @@ export function getSubprocessWorkerOptions(): {
   coordinatorHttpPort: number;
   coordinatorClusterPort: number;
   fsSnapshots: McpJsFsSnapshotConfig;
+  heapSnapshots: boolean;
 } {
   return {
     binaryPath: MCP_JS_BIN,
@@ -174,6 +188,7 @@ export function getSubprocessWorkerOptions(): {
     coordinatorHttpPort: MCP_JS_COORDINATOR_HTTP_PORT,
     coordinatorClusterPort: MCP_JS_COORDINATOR_CLUSTER_PORT,
     fsSnapshots: getMcpJsFsSnapshotConfig(),
+    heapSnapshots: MCP_JS_HEAP_SNAPSHOTS_ENABLED,
   };
 }
 

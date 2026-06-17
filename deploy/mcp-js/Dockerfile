@@ -1,9 +1,9 @@
 # mcp-js (r33drichards/mcp-js) sandbox backend for open-agents — Railway.
 #
 # Based on the toolbox image (scratch + prebuilt mcp-v8 release binary + the
-# eight bundled languages and the craftos upstream), but on mcp-v8 v0.15.0 and
-# switched from --stateless to a STATEFUL, fs-snapshot configuration so each
-# agent session gets a persistent V8 heap and content-addressed filesystem.
+# eight bundled languages and the craftos upstream), on mcp-v8 v0.16.0, with a
+# per-session content-addressed FILESYSTEM (no heap snapshots) so each session
+# gets persistent /work state that coexists with the WASM languages.
 #
 # Storage is node-local on a Railway volume mounted at /data (single instance;
 # fs snapshots only need shared S3 in a multi-node cluster). The container runs
@@ -28,7 +28,7 @@ RUN node build-bootstrap.mjs /build/bootstrap.js
 # ── Stage 2: assemble a minimal rootfs for the scratch image ───────────────
 FROM debian:bookworm-slim AS rootfs
 
-ARG MCP_V8_VERSION=v0.15.1
+ARG MCP_V8_VERSION=v0.16.0
 ARG TARGETARCH
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -85,19 +85,20 @@ ENV MCP_V8_BIND_HOST=::
 # image can't chown a runtime-mounted volume; the V8 isolate is the sandbox).
 EXPOSE 3000
 
-# Stateful + per-session content-addressed filesystem, all on the /data volume:
-#   --directory-path   heap snapshots (file-backed, node-local)
-#   --session-db-path  session log + execution registry (+ fs-labels db)
-#   --enable-fs-snapshots / --fs-store-dir  the CAS filesystem blobs
-# (no --stateless: that conflicts with persistence). --enable-fs-snapshots with
-# no fs policy defaults to an allow-all fs surface, which the bundled
+# Per-session content-addressed filesystem (no heap snapshots), on the /data
+# volume. Heap persistence is OFF on purpose: heap snapshots run in a V8
+# SnapshotCreator isolate that disables WebAssembly, so they're mutually
+# exclusive with the --wasm-module languages below (mcp-v8 rejects the combo at
+# startup). Cross-call state lives in the /work filesystem instead.
+#   --fs-store dir / --fs-dir   the CAS filesystem blobs (node-local)
+#   --session-db-path           session log + execution registry (+ fs-labels db)
+# An fs surface with no fs policy defaults to allow-all, which the bundled
 # filesystem.rego then narrows.
 ENTRYPOINT ["/usr/local/bin/mcp-v8", \
   "--sse-port", "3000", \
-  "--directory-path", "/data/heaps", \
   "--session-db-path", "/data/sessions", \
-  "--enable-fs-snapshots", \
-  "--fs-store-dir", "/data/fs-blobs", \
+  "--fs-store", "dir", \
+  "--fs-dir", "/data/fs-blobs", \
   "--heap-memory-max", "1024", \
   "--execution-timeout", "300", \
   "--max-concurrent-executions", "100", \

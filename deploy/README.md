@@ -3,14 +3,17 @@
 Two services on one Railway project:
 
 - **mcp-js** — the mcp-v8 sandbox backend (`deploy/mcp-js/`). Toolbox-style
-  scratch image on mcp-v8 **v0.15.1**, bundling the eight languages + the
-  craftos upstream, but **stateful with per-session content-addressed
-  filesystem snapshots** on a persistent volume at `/data` (single node).
-  Serves SSE MCP at `/sse` and REST at `/api/exec` on port 3000.
-  **Internal-only** — no public domain; the image sets `MCP_V8_BIND_HOST=::`
-  (dual-stack) so it is reachable at `http://mcp-js.railway.internal:3000`
-  over Railway's private network. (Requires mcp-v8 ≥ v0.15.1, which added the
-  `MCP_V8_BIND_HOST` env; older builds hardcode `0.0.0.0` and won't bind IPv6.)
+  scratch image on mcp-v8 **v0.16.0**, bundling the eight languages + the
+  craftos upstream, with a **per-session content-addressed filesystem**
+  (`--fs-store dir`, no heap snapshots) on a persistent volume at `/data`
+  (single node). Heap persistence is intentionally off: it disables WebAssembly
+  and so can't coexist with the bundled WASM languages — cross-call state lives
+  in the `/work` filesystem. Serves SSE MCP at `/sse` and REST at `/api/exec` on
+  port 3000. **Internal-only** — no public domain; the image sets
+  `MCP_V8_BIND_HOST=::` (dual-stack) so it is reachable at
+  `http://mcp-js.railway.internal:3000` over Railway's private network.
+  (Requires mcp-v8 ≥ v0.16.0: the heap/fs split, `--fs-store`, and the
+  current-thread isolate fix that makes fs writes work over the network.)
 - **web** — the Next.js app (`deploy/web/Dockerfile`, build context = repo
   root), the only service with a public domain. Talks to the mcp-js service
   over `MCP_JS_BASE_URL` (shared remote worker — no local subprocess workers)
@@ -26,7 +29,7 @@ deploy/
 
 ## mcp-js service
 
-- Build: `deploy/mcp-js/Dockerfile` (downloads the `mcp-v8-linux*.gz` v0.15.0
+- Build: `deploy/mcp-js/Dockerfile` (downloads the `mcp-v8-linux*.gz` v0.16.0
   release binary; vendors language WASM in a builder stage).
 - Volume: mount a Railway volume at **`/data`** (heaps, session DB, fs blobs).
 - No env vars required; everything is in the Dockerfile `ENTRYPOINT`.

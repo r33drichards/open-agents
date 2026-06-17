@@ -16,10 +16,12 @@ import type { McpJsState } from "./state.ts";
 
 const ENVIRONMENT_DETAILS = [
   "This is an mcp-js (mcp-v8) sandbox: a remote V8 JavaScript execution engine.",
-  "It is JS-execution-only — there is no POSIX shell, git, or persistent",
-  "filesystem. The `exec` capability runs JavaScript source (ES modules with",
-  "top-level await); use `console.log(...)` to produce output. Globals persist",
-  "across calls via heap snapshots. Filesystem and bash tools are unavailable.",
+  "It is JS-execution-only — there is no POSIX shell or git. The `exec`",
+  "capability runs JavaScript source (ES modules with top-level await); use",
+  "`console.log(...)` to produce output. A per-session content-addressed",
+  "filesystem persists at /work across calls (use fs.writeFile/readFile/readdir",
+  "from run_js). JS globals are NOT guaranteed to persist between calls, so save",
+  "anything you need to carry forward to /work. Bash tools are unavailable.",
 ].join(" ");
 
 /**
@@ -72,9 +74,10 @@ export class McpJsSandbox implements Sandbox {
     const executionTimeoutSecs =
       timeoutMs > 0 ? Math.ceil(timeoutMs / 1000) : undefined;
 
-    // No heap is passed: the server restores this session's latest heap and
-    // snapshots the result automatically, so the stable `session` label carries
-    // state forward without the client tracking content-addressed heap keys.
+    // The stable `session` label carries state forward: the server restores and
+    // re-snapshots this session's latest state (the /work filesystem, plus the
+    // heap when heap persistence is enabled) automatically, so the client need
+    // not track content-addressed keys. `heap` is normally unset.
     const run = await this.client.runJs(command, {
       heap: this.heap,
       session: this.session,
