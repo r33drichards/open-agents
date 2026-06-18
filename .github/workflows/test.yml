@@ -1,11 +1,13 @@
-name: CI
+name: Test
 
 on:
   pull_request:
     branches: ["*"]
+  push:
+    branches: ["main"]
 
 jobs:
-  lint-and-typecheck:
+  test:
     runs-on: ubuntu-latest
 
     steps:
@@ -30,12 +32,6 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-
-      - name: Lint and format check
-        run: pnpm check
-
-      - name: Typecheck
-        run: pnpm typecheck
 
       - name: Test
         run: pnpm test:isolated
