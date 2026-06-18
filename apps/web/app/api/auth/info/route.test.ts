@@ -53,6 +53,7 @@ function createRequest(url = "http://localhost/api/auth/info"): NextRequest {
 describe("GET /api/auth/info", () => {
   afterEach(() => {
     Object.assign(process.env, { NODE_ENV: originalNodeEnv });
+    delete process.env.OPEN_AGENTS_TRIAL_DEMO;
   });
 
   beforeEach(() => {
@@ -147,7 +148,10 @@ describe("GET /api/auth/info", () => {
   });
 
   test("reports local development managed template trial users", async () => {
-    Object.assign(process.env, { NODE_ENV: "development" });
+    Object.assign(process.env, {
+      NODE_ENV: "development",
+      OPEN_AGENTS_TRIAL_DEMO: "1",
+    });
     const { GET } = await routeModulePromise;
 
     const response = await GET(createRequest());

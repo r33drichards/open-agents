@@ -173,7 +173,9 @@ describe("GET /api/chat/[chatId]/stream", () => {
     const response = await GET(createStreamRequest(), routeContext);
     expect(response.status).toBe(200);
     expect(response.headers.get("x-workflow-stream-tail-index")).toBe("12");
-    expect(lastStartIndex).toBeUndefined();
+    // The route always replays from index 0 when the client doesn't request a
+    // specific startIndex, so the SDK sees `text-start` before any `text-delta`.
+    expect(lastStartIndex).toBe(0);
     expect(spies.updateChatActiveStreamId).not.toHaveBeenCalled();
   });
 

@@ -5,6 +5,8 @@
   "ignorePatterns": [
     ".agents/skills/**",
     "apps/web/components/ui/**",
+    "apps/web/lib/db/migrations/**",
+    "deploy/mcp-js/**",
     "**/*.md",
   ],
   "arrowParens": "always",
