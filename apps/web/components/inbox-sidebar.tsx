@@ -31,15 +31,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import {
   Popover,
   PopoverContent,
   PopoverTrigger,
@@ -773,8 +764,6 @@ export function InboxSidebar({
     repo: string;
   } | null>(null);
   const [isCreatingFromBranch, setIsCreatingFromBranch] = useState(false);
-  const [archiveConfirmSession, setArchiveConfirmSession] =
-    useState<SessionWithUnread | null>(null);
 
   const fetchArchivedSessionsPage = useCallback(
     async ({ offset, replace }: { offset: number; replace: boolean }) => {
@@ -919,38 +908,34 @@ export function InboxSidebar({
     }));
   }, []);
 
-  const handleArchiveSession = useCallback((session: SessionWithUnread) => {
-    setArchiveConfirmSession(session);
-  }, []);
+  const handleArchiveSession = useCallback(
+    async (session: SessionWithUnread) => {
+      try {
+        await onArchiveSession(session.id);
+        setArchivedSessions((current) => {
+          const nextSessions = [
+            { ...session, status: "archived" as const },
+            ...current.filter(
+              (existingSession) => existingSession.id !== session.id,
+            ),
+          ];
+          const maxCachedSessions = Math.max(
+            current.length,
+            ARCHIVED_SESSIONS_PAGE_SIZE,
+          );
 
-  const handleConfirmArchive = useCallback(async () => {
-    if (!archiveConfirmSession) return;
-    const session = archiveConfirmSession;
-    setArchiveConfirmSession(null);
-    try {
-      await onArchiveSession(session.id);
-      setArchivedSessions((current) => {
-        const nextSessions = [
-          { ...session, status: "archived" as const },
-          ...current.filter(
-            (existingSession) => existingSession.id !== session.id,
-          ),
-        ];
-        const maxCachedSessions = Math.max(
-          current.length,
-          ARCHIVED_SESSIONS_PAGE_SIZE,
+          return nextSessions.slice(0, maxCachedSessions);
+        });
+        setHasMoreArchivedSessions(
+          (currentHasMore) =>
+            currentHasMore || archivedCount + 1 > ARCHIVED_SESSIONS_PAGE_SIZE,
         );
-
-        return nextSessions.slice(0, maxCachedSessions);
-      });
-      setHasMoreArchivedSessions(
-        (currentHasMore) =>
-          currentHasMore || archivedCount + 1 > ARCHIVED_SESSIONS_PAGE_SIZE,
-      );
-    } catch (err) {
-      console.error("Failed to archive session:", err);
-    }
-  }, [archiveConfirmSession, archivedCount, onArchiveSession]);
+      } catch (err) {
+        console.error("Failed to archive session:", err);
+      }
+    },
+    [archivedCount, onArchiveSession],
+  );
 
   const handleUnarchiveSession = useCallback(
     async (session: SessionWithUnread) => {
@@ -1326,36 +1311,6 @@ export function InboxSidebar({
           onSelectBranch={handleBranchSelected}
         />
       ) : null}
-
-      {/* Archive confirmation dialog */}
-      <Dialog
-        open={archiveConfirmSession !== null}
-        onOpenChange={(open) => {
-          if (!open) setArchiveConfirmSession(null);
-        }}
-      >
-        <DialogContent showCloseButton={false}>
-          <DialogHeader>
-            <DialogTitle>Archive session?</DialogTitle>
-            <DialogDescription>
-              This will stop the sandbox and archive the session. You can still
-              view it in the archive tab.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <DialogClose asChild>
-              <Button variant="outline">Cancel</Button>
-            </DialogClose>
-            <Button
-              onClick={() => {
-                void handleConfirmArchive();
-              }}
-            >
-              Archive
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </>
   );
 }
