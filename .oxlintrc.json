@@ -1,6 +1,11 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "ignorePatterns": [".agents/skills/**", "apps/web/components/ui/**"],
+  "ignorePatterns": [
+    ".agents/skills/**",
+    "apps/web/components/ui/**",
+    "apps/web/lib/db/migrations/**",
+    "deploy/mcp-js/**"
+  ],
   "rules": {
     "arrow-body-style": "off",
     "complexity": "off",

@@ -6,6 +6,11 @@ import { createServer } from "node:net";
 import { join } from "node:path";
 import type { McpJsFsSnapshotConfig } from "@/lib/sandbox/config";
 import { buildMcpV8WorkerArgs } from "./worker-args";
+import type {
+  EnsureWorkerParams,
+  McpJsWorker,
+  McpJsWorkerProvider,
+} from "./worker-provider";
 
 /**
  * Resolve the filesystem policy path the mcp-v8 worker reads via `file://`.
@@ -27,11 +32,6 @@ function resolveFsSnapshots(
       join(process.cwd(), "lib/sandbox/mcp-js/fs-policy.rego"),
   };
 }
-import type {
-  EnsureWorkerParams,
-  McpJsWorker,
-  McpJsWorkerProvider,
-} from "./worker-provider";
 
 /** The subset of a spawned process this provider depends on. */
 export interface SpawnedWorkerProcess {
