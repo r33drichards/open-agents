@@ -163,6 +163,19 @@ export const MCP_JS_HEAP_SNAPSHOTS_ENABLED =
 export const MCP_JS_S3_BUCKET = process.env.MCP_JS_S3_BUCKET;
 
 /**
+ * Whether subprocess-mode workers are launched with the bundled toolbox
+ * languages (picat, lua, craftos, …). Requires the wasm assets, `bootstrap.js`,
+ * and rego policies to be present at {@link MCP_JS_LANGUAGES_DIR} in the image
+ * (the web Dockerfile copies them there). Off by default.
+ */
+export const MCP_JS_BUNDLED_LANGUAGES =
+  process.env.MCP_JS_BUNDLED_LANGUAGES === "true";
+
+/** Directory the bundled language assets live in (see the web Dockerfile). */
+export const MCP_JS_LANGUAGES_DIR =
+  process.env.MCP_JS_LANGUAGES_DIR ?? "/opt/languages";
+
+/**
  * Whether the subprocess worker provider honors a session's
  * {@link import("@open-agents/sandbox").McpJsRuntimeConfig.commandOverride}.
  *
@@ -194,6 +207,7 @@ export function getSubprocessWorkerOptions(): {
   fsSnapshots: McpJsFsSnapshotConfig;
   heapSnapshots: boolean;
   allowCommandOverride: boolean;
+  languageBundle: { dir: string } | undefined;
 } {
   return {
     binaryPath: MCP_JS_BIN,
@@ -204,6 +218,9 @@ export function getSubprocessWorkerOptions(): {
     fsSnapshots: getMcpJsFsSnapshotConfig(),
     heapSnapshots: MCP_JS_HEAP_SNAPSHOTS_ENABLED,
     allowCommandOverride: MCP_JS_ALLOW_COMMAND_OVERRIDE,
+    languageBundle: MCP_JS_BUNDLED_LANGUAGES
+      ? { dir: MCP_JS_LANGUAGES_DIR }
+      : undefined,
   };
 }
 

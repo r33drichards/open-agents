@@ -74,6 +74,11 @@ export interface SubprocessWorkerProviderOptions {
   /** Persist the V8 heap (globals across runs). Off by default (matches deploy). */
   heapSnapshots?: boolean;
   /**
+   * Bundled toolbox languages each session's worker is launched with. Omitted
+   * (the default) launches a bare JS sandbox. The coordinator never gets these.
+   */
+  languageBundle?: { dir: string };
+  /**
    * Honor a session's `runtimeConfig.commandOverride` and spawn it verbatim.
    * Off by default — the override runs an arbitrary host process. See
    * `MCP_JS_ALLOW_COMMAND_OVERRIDE`.
@@ -189,6 +194,7 @@ export class SubprocessWorkerProvider implements McpJsWorkerProvider {
   private readonly coordinatorClusterPort: number;
   private readonly fsSnapshots: McpJsFsSnapshotConfig | undefined;
   private readonly heapSnapshots: boolean;
+  private readonly languageBundle: { dir: string } | undefined;
   private readonly allowCommandOverride: boolean;
   private readonly readinessTimeoutMs: number;
   private readonly readinessPollMs: number;
@@ -213,6 +219,7 @@ export class SubprocessWorkerProvider implements McpJsWorkerProvider {
       options.coordinatorClusterPort ?? DEFAULT_COORDINATOR_CLUSTER_PORT;
     this.fsSnapshots = resolveFsSnapshots(options.fsSnapshots);
     this.heapSnapshots = options.heapSnapshots ?? false;
+    this.languageBundle = options.languageBundle;
     this.allowCommandOverride = options.allowCommandOverride ?? false;
     this.readinessTimeoutMs =
       options.readinessTimeoutMs ?? DEFAULT_READINESS_TIMEOUT_MS;
@@ -379,6 +386,7 @@ export class SubprocessWorkerProvider implements McpJsWorkerProvider {
       runtimeConfig: params.runtimeConfig,
       fsSnapshots: this.fsSnapshots,
       heapSnapshots: this.heapSnapshots,
+      languageBundle: this.languageBundle,
     });
     return { binary: this.binaryPath, args, httpPort, nodeId };
   }

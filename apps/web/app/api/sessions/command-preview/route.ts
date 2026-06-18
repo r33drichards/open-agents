@@ -1,9 +1,11 @@
 import {
   getMcpJsFsSnapshotConfig,
   MCP_JS_BIN,
+  MCP_JS_BUNDLED_LANGUAGES,
   MCP_JS_CLUSTER_HOST,
   MCP_JS_COORDINATOR_CLUSTER_PORT,
   MCP_JS_HEAP_SNAPSHOTS_ENABLED,
+  MCP_JS_LANGUAGES_DIR,
   MCP_JS_STORAGE_DIR,
 } from "@/lib/sandbox/config";
 import { buildMcpV8WorkerArgs } from "@/lib/sandbox/mcp-js/worker-args";
@@ -44,6 +46,9 @@ export async function GET() {
     transport: "sse",
     fsSnapshots: getMcpJsFsSnapshotConfig(),
     heapSnapshots: MCP_JS_HEAP_SNAPSHOTS_ENABLED,
+    languageBundle: MCP_JS_BUNDLED_LANGUAGES
+      ? { dir: MCP_JS_LANGUAGES_DIR }
+      : undefined,
   });
 
   return Response.json({ command: formatMcpV8Command(MCP_JS_BIN, args) });
