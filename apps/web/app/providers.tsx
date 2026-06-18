@@ -3,9 +3,7 @@
 import { useRouter } from "next/navigation";
 import {
   Suspense,
-  createContext,
   useCallback,
-  useContext,
   useEffect,
   useMemo,
   useRef,
@@ -13,23 +11,18 @@ import {
 } from "react";
 import { Toaster } from "sonner";
 import { SWRConfig } from "swr";
+import { CommandPalette } from "@/components/command-palette";
 import { GitHubReconnectGate } from "@/components/github-reconnect-gate";
+import {
+  type ResolvedTheme,
+  ThemeContext,
+  type ThemePreference,
+} from "@/hooks/use-theme";
 import { authClient } from "@/lib/auth/client";
 import { FetchError } from "@/lib/swr";
 
 const THEME_STORAGE_KEY = "open-agents-theme";
 const DARK_MODE_MEDIA_QUERY = "(prefers-color-scheme: dark)";
-
-export type ThemePreference = "light" | "dark" | "system";
-export type ResolvedTheme = "light" | "dark";
-
-interface ThemeContextValue {
-  theme: ThemePreference;
-  resolvedTheme: ResolvedTheme;
-  setTheme: (theme: ThemePreference) => void;
-}
-
-const ThemeContext = createContext<ThemeContextValue | null>(null);
 
 function isThemePreference(value: string | null): value is ThemePreference {
   return value === "light" || value === "dark" || value === "system";
@@ -133,6 +126,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
     <ThemeContext.Provider value={themeContextValue}>
       <SWRConfig value={{ onError: handleError }}>
         {children}
+        <CommandPalette />
         <Suspense fallback={null}>
           <GitHubReconnectGate />
         </Suspense>
@@ -140,14 +134,4 @@ export function Providers({ children }: { children: React.ReactNode }) {
       <Toaster theme={resolvedTheme} />
     </ThemeContext.Provider>
   );
-}
-
-export function useTheme() {
-  const context = useContext(ThemeContext);
-
-  if (!context) {
-    throw new Error("useTheme must be used within Providers");
-  }
-
-  return context;
 }

@@ -2,12 +2,12 @@
 
 import { useCallback, useMemo, useRef, useState } from "react";
 import { Plus, Search, Trash2, X } from "lucide-react";
-import { type ThemePreference, useTheme } from "@/app/providers";
 import {
   DEFAULT_SANDBOX_TYPE,
   type SandboxType,
 } from "@/components/sandbox-selector-compact";
 import { Button } from "@/components/ui/button";
+import { type ThemePreference, useTheme } from "@/hooks/use-theme";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
