@@ -24,11 +24,12 @@ export async function runDashboardQuery(params: {
 }): Promise<DashboardQueryResult> {
   const client = createMcpV8Client(params.baseUrl);
 
-  // run_js evaluates the snippet as an ES module, where a top-level `return` is
-  // a syntax error (but top-level await is allowed). The agent authors query
-  // `code` as a function body that `return`s its data, so wrap it in an async
-  // IIFE and await it — the awaited value becomes the run's result.
-  const wrapped = `await (async () => {\n${params.code}\n})()`;
+  // run_js evaluates the snippet as a module: a top-level `return` is a syntax
+  // error (top-level await is allowed), and the run's `result` is the value of
+  // the last top-level expression. The agent authors query `code` as a function
+  // body that `return`s its data, so run it as an awaited async IIFE and leave
+  // its value as the trailing bare expression to be captured.
+  const wrapped = `const __dashboardQueryResult = await (async () => {\n${params.code}\n})();\n__dashboardQueryResult`;
 
   let result: Awaited<ReturnType<typeof client.runJs>>;
   try {
@@ -51,8 +52,8 @@ export async function runDashboardQuery(params: {
     };
   }
 
-  if (result.result === undefined) {
-    // The snippet ran but returned nothing to bind.
+  if (result.result === undefined || result.result === "") {
+    // The snippet ran but returned nothing (or undefined) to bind.
     return { ok: true, data: null };
   }
 
