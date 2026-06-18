@@ -6,6 +6,8 @@ import { createMcpV8Client } from "@open-agents/sandbox";
 const MAX_RESULT_BYTES = 256 * 1024;
 /** Cap a single dashboard query's runtime so it can't tie up the worker. */
 const QUERY_TIMEOUT_SECS = 15;
+/** Marks the JSON result line in run_js stdout (its `result` field is unused). */
+const RESULT_SENTINEL = "__DASHBOARD_QUERY_RESULT__";
 
 export type DashboardQueryResult =
   | { ok: true; data: unknown }
@@ -24,13 +26,15 @@ export async function runDashboardQuery(params: {
 }): Promise<DashboardQueryResult> {
   const client = createMcpV8Client(params.baseUrl);
 
-  // The agent authors query `code` as a function body that `return`s its data.
-  // run_js captures the value of the snippet's final top-level expression (and
-  // awaits it if it's a promise), so make that expression an async IIFE holding
-  // the code. NB: a top-level `await` keyword would turn the snippet into a
-  // module (no completion value to capture), and a bare top-level `return` is a
-  // syntax error — the IIFE avoids both.
-  const wrapped = `(async () => {\n${params.code}\n})()`;
+  // run_js does NOT capture a snippet's return/expression value — its `result`
+  // field is always empty; values come back via stdout (`output`). The agent
+  // authors query `code` as a function body that `return`s its data, so run it
+  // in an awaited async IIFE (top-level await makes the worker wait for async
+  // work like fs.readFile/fetch to finish) and log the JSON result on a marked
+  // line, which we parse out of `output`.
+  const wrapped = `const __dq = await (async () => {\n${params.code}\n})();\nconsole.log(${JSON.stringify(
+    RESULT_SENTINEL,
+  )} + JSON.stringify(__dq === undefined ? null : __dq));`;
 
   let result: Awaited<ReturnType<typeof client.runJs>>;
   try {
@@ -53,20 +57,30 @@ export async function runDashboardQuery(params: {
     };
   }
 
-  if (result.result === undefined || result.result === "") {
-    // The snippet ran but returned nothing (or undefined) to bind.
+  const output = result.output ?? "";
+  const markerIndex = output.lastIndexOf(RESULT_SENTINEL);
+  if (markerIndex < 0) {
+    // Ran but logged no result line (e.g. returned undefined).
     return { ok: true, data: null };
   }
-
-  if (result.result.length > MAX_RESULT_BYTES) {
+  let json = output.slice(markerIndex + RESULT_SENTINEL.length);
+  const newlineIndex = json.indexOf("\n");
+  if (newlineIndex >= 0) {
+    json = json.slice(0, newlineIndex);
+  }
+  json = json.trim();
+  if (!json) {
+    return { ok: true, data: null };
+  }
+  if (json.length > MAX_RESULT_BYTES) {
     return {
       ok: false,
-      error: `Query result too large (${result.result.length} bytes; max ${MAX_RESULT_BYTES}). Return less data or paginate.`,
+      error: `Query result too large (${json.length} bytes; max ${MAX_RESULT_BYTES}). Return less data or paginate.`,
     };
   }
 
   try {
-    return { ok: true, data: JSON.parse(result.result) as unknown };
+    return { ok: true, data: JSON.parse(json) as unknown };
   } catch (error) {
     return {
       ok: false,
