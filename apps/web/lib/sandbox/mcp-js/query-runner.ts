@@ -24,12 +24,13 @@ export async function runDashboardQuery(params: {
 }): Promise<DashboardQueryResult> {
   const client = createMcpV8Client(params.baseUrl);
 
-  // run_js evaluates the snippet as a module: a top-level `return` is a syntax
-  // error (top-level await is allowed), and the run's `result` is the value of
-  // the last top-level expression. The agent authors query `code` as a function
-  // body that `return`s its data, so run it as an awaited async IIFE and leave
-  // its value as the trailing bare expression to be captured.
-  const wrapped = `const __dashboardQueryResult = await (async () => {\n${params.code}\n})();\n__dashboardQueryResult`;
+  // The agent authors query `code` as a function body that `return`s its data.
+  // run_js captures the value of the snippet's final top-level expression (and
+  // awaits it if it's a promise), so make that expression an async IIFE holding
+  // the code. NB: a top-level `await` keyword would turn the snippet into a
+  // module (no completion value to capture), and a bare top-level `return` is a
+  // syntax error — the IIFE avoids both.
+  const wrapped = `(async () => {\n${params.code}\n})()`;
 
   let result: Awaited<ReturnType<typeof client.runJs>>;
   try {
