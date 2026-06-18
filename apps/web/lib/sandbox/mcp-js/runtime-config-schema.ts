@@ -25,6 +25,7 @@ export const mcpJsRuntimeConfigSchema = z
       })
       .strict()
       .optional(),
+    commandOverride: z.string().min(1).max(8192).optional(),
   })
   .strict();
 

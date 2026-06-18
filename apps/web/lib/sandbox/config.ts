@@ -162,6 +162,19 @@ export const MCP_JS_HEAP_SNAPSHOTS_ENABLED =
 
 export const MCP_JS_S3_BUCKET = process.env.MCP_JS_S3_BUCKET;
 
+/**
+ * Whether the subprocess worker provider honors a session's
+ * {@link import("@open-agents/sandbox").McpJsRuntimeConfig.commandOverride}.
+ *
+ * Off by default: the override is spawned verbatim as a host child process, so
+ * enabling it lets any session author run an arbitrary command on the host.
+ * Only turn this on for trusted, single-tenant deployments. The override is
+ * still persisted and editable in the UI regardless — this flag only controls
+ * whether it is applied at spawn time.
+ */
+export const MCP_JS_ALLOW_COMMAND_OVERRIDE =
+  process.env.MCP_JS_ALLOW_COMMAND_OVERRIDE === "true";
+
 /** Filesystem-snapshot config for spawned workers, or `enabled: false`. */
 export function getMcpJsFsSnapshotConfig(): McpJsFsSnapshotConfig {
   return {
@@ -180,6 +193,7 @@ export function getSubprocessWorkerOptions(): {
   coordinatorClusterPort: number;
   fsSnapshots: McpJsFsSnapshotConfig;
   heapSnapshots: boolean;
+  allowCommandOverride: boolean;
 } {
   return {
     binaryPath: MCP_JS_BIN,
@@ -189,6 +203,7 @@ export function getSubprocessWorkerOptions(): {
     coordinatorClusterPort: MCP_JS_COORDINATOR_CLUSTER_PORT,
     fsSnapshots: getMcpJsFsSnapshotConfig(),
     heapSnapshots: MCP_JS_HEAP_SNAPSHOTS_ENABLED,
+    allowCommandOverride: MCP_JS_ALLOW_COMMAND_OVERRIDE,
   };
 }
 

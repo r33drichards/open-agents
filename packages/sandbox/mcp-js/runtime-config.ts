@@ -13,6 +13,19 @@ export interface McpJsRuntimeConfig {
   workingDirectory?: string;
   /** Host-capability policies; each capability is denied unless enabled. */
   capabilities?: McpJsCapabilities;
+  /**
+   * Verbatim launch command for this session's mcp-v8 worker, overriding the
+   * argv generated from the fields above. When set, the subprocess worker
+   * provider parses it into `[binary, ...args]` and spawns it as-is. The
+   * cluster-managed flags (`--sse-port`/`--http-port`, `--cluster-port`,
+   * `--node-id`, `--join`) are then the author's responsibility — a malformed
+   * command can stop the worker joining the cluster or being reachable. The
+   * shared (remote) provider ignores it (it spawns no process).
+   *
+   * SECURITY: this runs an arbitrary process on the host, so the subprocess
+   * provider only honors it when `MCP_JS_ALLOW_COMMAND_OVERRIDE=true`.
+   */
+  commandOverride?: string;
 }
 
 /** Per-capability access policies for an mcp-js worker. */

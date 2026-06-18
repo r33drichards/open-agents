@@ -11,6 +11,7 @@ import {
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useGitHubConnectionStatus } from "@/hooks/use-github-connection-status";
+import { useMcpCommandPreview } from "@/hooks/use-mcp-command-preview";
 import { useSession } from "@/hooks/use-session";
 import { useUserPreferences } from "@/hooks/use-user-preferences";
 import { useVercelRepoProjects } from "@/hooks/use-vercel-repo-projects";
@@ -18,6 +19,7 @@ import type { VercelProjectSelection } from "@/lib/vercel/types";
 import { cn } from "@/lib/utils";
 import { BranchSelectorCompact } from "./branch-selector-compact";
 import { RepoSelectorCompact } from "./repo-selector-compact";
+import { SessionCommandEditor } from "./session-command-editor";
 import {
   DEFAULT_SANDBOX_TYPE,
   SANDBOX_OPTIONS,
@@ -44,6 +46,7 @@ interface SessionStarterProps {
     autoCommitPush: boolean;
     autoCreatePr: boolean;
     vercelProject?: VercelProjectSelection | null;
+    commandOverride?: string;
   }) => void;
   isLoading?: boolean;
   lastRepo: { owner: string; repo: string } | null;
@@ -79,6 +82,10 @@ export function SessionStarter({
   const [autoCommitPush, setAutoCommitPush] = useState<boolean | null>(null);
   const [autoCreatePr, setAutoCreatePr] = useState<boolean | null>(null);
   const [gitSettingsExpanded, setGitSettingsExpanded] = useState(false);
+  const { command: defaultCommand, loading: commandLoading } =
+    useMcpCommandPreview();
+  const [commandValue, setCommandValue] = useState("");
+  const [commandTouched, setCommandTouched] = useState(false);
   const sandboxType = preferences?.defaultSandboxType ?? DEFAULT_SANDBOX_TYPE;
   const sandboxName =
     SANDBOX_OPTIONS.find((s) => s.id === sandboxType)?.name ?? sandboxType;
@@ -130,6 +137,14 @@ export function SessionStarter({
     }
     setVercelProjectChoice(undefined);
   }, [repoProjects, repoProjectsLoading, shouldLoadVercelProjects]);
+
+  // Seed the editor with the generated command once it loads, until the user
+  // edits it (after which their text is preserved).
+  useEffect(() => {
+    if (defaultCommand !== null && !commandTouched) {
+      setCommandValue(defaultCommand);
+    }
+  }, [defaultCommand, commandTouched]);
 
   const handleRepoSelect = (owner: string, repo: string) => {
     setSelectedOwner(owner);
@@ -212,6 +227,17 @@ export function SessionStarter({
       }
     }
 
+    // Only send an override when the user actually changed the command; an
+    // unedited preview uses placeholder ports/node id, so the server should
+    // fall back to its auto-generated per-session argv instead.
+    const trimmedCommand = commandValue.trim();
+    const commandOverride =
+      defaultCommand !== null &&
+      trimmedCommand.length > 0 &&
+      commandValue !== defaultCommand
+        ? commandValue
+        : undefined;
+
     onSubmit({
       repoOwner: mode === "repo" ? selectedOwner || undefined : undefined,
       repoName: mode === "repo" ? selectedRepo || undefined : undefined,
@@ -225,6 +251,7 @@ export function SessionStarter({
       autoCommitPush: effectiveAutoCommitPush,
       autoCreatePr: effectiveAutoCommitPush ? effectiveAutoCreatePr : false,
       vercelProject,
+      commandOverride,
     });
   };
 
@@ -383,6 +410,21 @@ export function SessionStarter({
             </div>
           </div>
         )}
+
+        <SessionCommandEditor
+          value={commandValue}
+          defaultCommand={defaultCommand}
+          loading={commandLoading}
+          disabled={controlsDisabled}
+          onChange={(next) => {
+            setCommandTouched(true);
+            setCommandValue(next);
+          }}
+          onReset={() => {
+            setCommandTouched(false);
+            setCommandValue(defaultCommand ?? "");
+          }}
+        />
 
         <button
           type="button"

@@ -1,3 +1,4 @@
+import type { SandboxState } from "@open-agents/sandbox";
 import { nanoid } from "nanoid";
 import { checkBotProtection } from "@/lib/botid";
 import {
@@ -49,7 +50,11 @@ interface CreateSessionRequest {
   autoCommitPush?: boolean;
   autoCreatePr?: boolean;
   vercelProject?: VercelProjectSelection | null;
+  commandOverride?: string;
 }
+
+/** Upper bound for a custom mcp-v8 launch command; matches the runtime schema. */
+const MAX_COMMAND_OVERRIDE_LENGTH = 8192;
 
 function generateBranchName(username: string, name?: string | null): string {
   let initials = "nb";
@@ -244,6 +249,17 @@ export async function POST(req: Request) {
   }
 
   if (
+    body.commandOverride !== undefined &&
+    (typeof body.commandOverride !== "string" ||
+      body.commandOverride.length > MAX_COMMAND_OVERRIDE_LENGTH)
+  ) {
+    return Response.json(
+      { error: "Invalid sandbox command override" },
+      { status: 400 },
+    );
+  }
+
+  if (
     body.repoOwner !== undefined &&
     (typeof body.repoOwner !== "string" ||
       !isValidGitHubRepoOwner(body.repoOwner))
@@ -305,6 +321,8 @@ export async function POST(req: Request) {
     autoCommitPush,
     autoCreatePr,
   } = body;
+
+  const commandOverride = body.commandOverride?.trim() || undefined;
 
   let finalBranch = branch;
   if (isNewBranch) {
@@ -374,9 +392,22 @@ export async function POST(req: Request) {
     const effectiveAutoCommitPush =
       autoCommitPush ?? preferences.autoCommitPush;
     const effectiveAutoCreatePr = autoCreatePr ?? preferences.autoCreatePr;
+    // A custom command is per-session mcp-js runtime config, so seed the
+    // initial state as mcp-js (provisioning reads `runtimeConfig` from a
+    // mcp-js state). The provisioner fills in the real `baseUrl` on connect.
+    const sessionId = nanoid();
+    const sandboxState = commandOverride
+      ? ({
+          type: "mcp-js" as const,
+          baseUrl: "",
+          session: sessionId,
+          runtimeConfig: { commandOverride },
+        } satisfies Extract<SandboxState, { type: "mcp-js" }>)
+      : { type: sandboxType };
+
     const result = await createSessionWithInitialChat({
       session: {
-        id: nanoid(),
+        id: sessionId,
         userId: session.user.id,
         title,
         status: "running",
@@ -394,7 +425,7 @@ export async function POST(req: Request) {
           ? effectiveAutoCreatePr
           : false,
         globalSkillRefs: preferences.globalSkillRefs,
-        sandboxState: { type: sandboxType },
+        sandboxState,
         lifecycleState: "provisioning",
         lifecycleVersion: 0,
       },

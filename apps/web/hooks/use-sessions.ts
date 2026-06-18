@@ -40,6 +40,7 @@ interface CreateSessionInput {
   autoCommitPush: boolean;
   autoCreatePr: boolean;
   vercelProject?: VercelProjectSelection | null;
+  commandOverride?: string;
 }
 
 interface SessionsResponse {
