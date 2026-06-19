@@ -188,6 +188,33 @@ export const MCP_JS_LANGUAGES_DIR =
 export const MCP_JS_ALLOW_COMMAND_OVERRIDE =
   process.env.MCP_JS_ALLOW_COMMAND_OVERRIDE === "true";
 
+/**
+ * Allowlist of user IDs permitted to set a per-session `commandOverride`.
+ *
+ * A custom command spawns an arbitrary host process, so on a multi-tenant
+ * deployment (open signup) it must NOT be exposed to everyone. Overrides are
+ * accepted at session creation only for users in this allowlist; an empty list
+ * denies everyone (override is strictly opt-in per user). This gate is separate
+ * from {@link MCP_JS_ALLOW_COMMAND_OVERRIDE}, which controls whether the worker
+ * provider applies a persisted override at spawn time — both must permit it.
+ */
+const MCP_JS_COMMAND_OVERRIDE_USER_IDS = (
+  process.env.MCP_JS_COMMAND_OVERRIDE_USER_IDS ?? ""
+)
+  .split(",")
+  .map((id) => id.trim())
+  .filter(Boolean);
+
+/** Whether `userId` is allowed to author a custom mcp-v8 launch command. */
+export function isCommandOverrideAllowedForUser(
+  userId: string | null | undefined,
+): boolean {
+  return (
+    Boolean(userId) &&
+    MCP_JS_COMMAND_OVERRIDE_USER_IDS.includes(userId as string)
+  );
+}
+
 /** Filesystem-snapshot config for spawned workers, or `enabled: false`. */
 export function getMcpJsFsSnapshotConfig(): McpJsFsSnapshotConfig {
   return {

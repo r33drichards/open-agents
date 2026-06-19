@@ -11,6 +11,7 @@ import {
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useGitHubConnectionStatus } from "@/hooks/use-github-connection-status";
+import { useMcpCommandPreview } from "@/hooks/use-mcp-command-preview";
 import { useSession } from "@/hooks/use-session";
 import { useUserPreferences } from "@/hooks/use-user-preferences";
 import { useVercelRepoProjects } from "@/hooks/use-vercel-repo-projects";
@@ -23,6 +24,7 @@ import {
   SANDBOX_OPTIONS,
   type SandboxType,
 } from "./sandbox-selector-compact";
+import { SessionCommandEditor } from "./session-command-editor";
 import { SessionStarterVercelSyncSection } from "./session-starter-vercel-sync-section";
 import { Switch } from "./ui/switch";
 
@@ -41,6 +43,7 @@ interface SessionStarterProps {
     cloneUrl?: string;
     isNewBranch: boolean;
     sandboxType: SandboxType;
+    commandOverride?: string;
     autoCommitPush: boolean;
     autoCreatePr: boolean;
     vercelProject?: VercelProjectSelection | null;
@@ -82,6 +85,10 @@ export function SessionStarter({
   const sandboxType = preferences?.defaultSandboxType ?? DEFAULT_SANDBOX_TYPE;
   const sandboxName =
     SANDBOX_OPTIONS.find((s) => s.id === sandboxType)?.name ?? sandboxType;
+  const { command: previewCommand, loading: previewLoading } =
+    useMcpCommandPreview();
+  const [commandOverride, setCommandOverride] = useState<string | null>(null);
+  const editorCommand = commandOverride ?? previewCommand ?? "";
   const isRepoModeDisabled = sessionLoading || isTrialUser;
 
   const shouldLoadVercelProjects =
@@ -222,6 +229,10 @@ export function SessionStarter({
           : undefined,
       isNewBranch: mode === "repo" ? isNewBranch : false,
       sandboxType,
+      commandOverride:
+        commandOverride && commandOverride !== previewCommand
+          ? commandOverride
+          : undefined,
       autoCommitPush: effectiveAutoCommitPush,
       autoCreatePr: effectiveAutoCommitPush ? effectiveAutoCreatePr : false,
       vercelProject,
@@ -383,6 +394,15 @@ export function SessionStarter({
             </div>
           </div>
         )}
+
+        <SessionCommandEditor
+          value={editorCommand}
+          defaultCommand={previewCommand}
+          loading={previewLoading}
+          disabled={isLoading}
+          onChange={setCommandOverride}
+          onReset={() => setCommandOverride(null)}
+        />
 
         <button
           type="button"

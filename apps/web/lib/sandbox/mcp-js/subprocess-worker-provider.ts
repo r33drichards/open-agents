@@ -6,6 +6,7 @@ import { createServer } from "node:net";
 import { join } from "node:path";
 import type { McpJsFsSnapshotConfig } from "@/lib/sandbox/config";
 import { buildMcpV8WorkerArgs } from "./worker-args";
+import { getCommandArgValue, parseMcpV8Command } from "./worker-command";
 import type {
   EnsureWorkerParams,
   McpJsWorker,
@@ -72,6 +73,12 @@ export interface SubprocessWorkerProviderOptions {
   fsSnapshots?: McpJsFsSnapshotConfig;
   /** Persist the V8 heap (globals across runs). Off by default (matches deploy). */
   heapSnapshots?: boolean;
+  /**
+   * Honor a session's `runtimeConfig.commandOverride`: spawn the custom command
+   * verbatim instead of the built argv. Off by default — it runs an arbitrary
+   * host process, so the API layer additionally restricts who may set one.
+   */
+  allowCommandOverride?: boolean;
   /** How long to wait for a worker's HTTP API to come up. */
   readinessTimeoutMs?: number;
   /** Delay between readiness polls. */
@@ -182,6 +189,7 @@ export class SubprocessWorkerProvider implements McpJsWorkerProvider {
   private readonly coordinatorClusterPort: number;
   private readonly fsSnapshots: McpJsFsSnapshotConfig | undefined;
   private readonly heapSnapshots: boolean;
+  private readonly allowCommandOverride: boolean;
   private readonly readinessTimeoutMs: number;
   private readonly readinessPollMs: number;
   private readonly spawn: WorkerSpawn;
@@ -205,6 +213,7 @@ export class SubprocessWorkerProvider implements McpJsWorkerProvider {
       options.coordinatorClusterPort ?? DEFAULT_COORDINATOR_CLUSTER_PORT;
     this.fsSnapshots = resolveFsSnapshots(options.fsSnapshots);
     this.heapSnapshots = options.heapSnapshots ?? false;
+    this.allowCommandOverride = options.allowCommandOverride ?? false;
     this.readinessTimeoutMs =
       options.readinessTimeoutMs ?? DEFAULT_READINESS_TIMEOUT_MS;
     this.readinessPollMs = options.readinessPollMs ?? DEFAULT_READINESS_POLL_MS;
@@ -321,7 +330,6 @@ export class SubprocessWorkerProvider implements McpJsWorkerProvider {
 
     const httpPort = await this.allocatePort();
     const clusterPort = await this.allocatePort();
-    const baseUrl = `http://127.0.0.1:${httpPort}`;
     const nodeId = toNodeId(params.sessionId);
     const args = buildMcpV8WorkerArgs({
       httpPort,
@@ -338,7 +346,28 @@ export class SubprocessWorkerProvider implements McpJsWorkerProvider {
       heapSnapshots: this.heapSnapshots,
     });
 
-    const proc = this.spawn(this.binaryPath, args);
+    // Custom launch command (allowlisted at the API layer): spawn it verbatim
+    // instead of the built argv. A custom command may bind a different port, so
+    // derive the reachable base URL from its own --sse-port/--http-port flag.
+    let launchBinary = this.binaryPath;
+    let launchArgs = args;
+    let baseUrl = `http://127.0.0.1:${httpPort}`;
+    const override = params.runtimeConfig?.commandOverride;
+    if (this.allowCommandOverride && override) {
+      const parsed = parseMcpV8Command(override);
+      if (parsed.binary) {
+        launchBinary = parsed.binary;
+        launchArgs = parsed.args;
+        const overridePort =
+          getCommandArgValue(parsed.args, "sse-port") ??
+          getCommandArgValue(parsed.args, "http-port");
+        if (overridePort) {
+          baseUrl = `http://127.0.0.1:${overridePort}`;
+        }
+      }
+    }
+
+    const proc = this.spawn(launchBinary, launchArgs);
     proc.once("exit", () => {
       if (this.workers.get(params.sessionId)?.proc === proc) {
         this.workers.delete(params.sessionId);
