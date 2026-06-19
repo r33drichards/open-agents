@@ -173,7 +173,7 @@ describe("GET /api/chat/[chatId]/stream", () => {
     const response = await GET(createStreamRequest(), routeContext);
     expect(response.status).toBe(200);
     expect(response.headers.get("x-workflow-stream-tail-index")).toBe("12");
-    expect(lastStartIndex).toBeUndefined();
+    expect(lastStartIndex).toBe(0);
     expect(spies.updateChatActiveStreamId).not.toHaveBeenCalled();
   });
 
