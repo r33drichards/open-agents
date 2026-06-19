@@ -6,7 +6,6 @@ import { createServer } from "node:net";
 import { join } from "node:path";
 import type { McpJsFsSnapshotConfig } from "@/lib/sandbox/config";
 import { buildMcpV8WorkerArgs } from "./worker-args";
-import { getCommandArgValue, parseMcpV8Command } from "./worker-command";
 import type {
   EnsureWorkerParams,
   McpJsWorker,
@@ -73,17 +72,6 @@ export interface SubprocessWorkerProviderOptions {
   fsSnapshots?: McpJsFsSnapshotConfig;
   /** Persist the V8 heap (globals across runs). Off by default (matches deploy). */
   heapSnapshots?: boolean;
-  /**
-   * Bundled toolbox languages each session's worker is launched with. Omitted
-   * (the default) launches a bare JS sandbox. The coordinator never gets these.
-   */
-  languageBundle?: { dir: string };
-  /**
-   * Honor a session's `runtimeConfig.commandOverride` and spawn it verbatim.
-   * Off by default — the override runs an arbitrary host process. See
-   * `MCP_JS_ALLOW_COMMAND_OVERRIDE`.
-   */
-  allowCommandOverride?: boolean;
   /** How long to wait for a worker's HTTP API to come up. */
   readinessTimeoutMs?: number;
   /** Delay between readiness polls. */
@@ -194,8 +182,6 @@ export class SubprocessWorkerProvider implements McpJsWorkerProvider {
   private readonly coordinatorClusterPort: number;
   private readonly fsSnapshots: McpJsFsSnapshotConfig | undefined;
   private readonly heapSnapshots: boolean;
-  private readonly languageBundle: { dir: string } | undefined;
-  private readonly allowCommandOverride: boolean;
   private readonly readinessTimeoutMs: number;
   private readonly readinessPollMs: number;
   private readonly spawn: WorkerSpawn;
@@ -219,8 +205,6 @@ export class SubprocessWorkerProvider implements McpJsWorkerProvider {
       options.coordinatorClusterPort ?? DEFAULT_COORDINATOR_CLUSTER_PORT;
     this.fsSnapshots = resolveFsSnapshots(options.fsSnapshots);
     this.heapSnapshots = options.heapSnapshots ?? false;
-    this.languageBundle = options.languageBundle;
-    this.allowCommandOverride = options.allowCommandOverride ?? false;
     this.readinessTimeoutMs =
       options.readinessTimeoutMs ?? DEFAULT_READINESS_TIMEOUT_MS;
     this.readinessPollMs = options.readinessPollMs ?? DEFAULT_READINESS_POLL_MS;
@@ -327,51 +311,17 @@ export class SubprocessWorkerProvider implements McpJsWorkerProvider {
     return this.main;
   }
 
-  /**
-   * Resolve how to launch a session's worker: either the argv generated for a
-   * cluster learner, or — when {@link allowCommandOverride} is on and the
-   * session carries a `commandOverride` — that command parsed and spawned
-   * verbatim. In the override path the port and node id are read back from the
-   * command (so readiness probing and cluster bookkeeping target the right
-   * worker), falling back to an allocated port / the session-derived id.
-   */
-  private async resolveLaunch(
-    params: EnsureWorkerParams,
-    main: MainHandle,
-  ): Promise<{
-    binary: string;
-    args: string[];
-    httpPort: number;
-    nodeId: string;
-  }> {
-    const override = this.allowCommandOverride
-      ? params.runtimeConfig?.commandOverride?.trim()
-      : undefined;
-
-    if (override) {
-      const { binary, args } = parseMcpV8Command(override);
-      const portValue =
-        getCommandArgValue(args, "sse-port") ??
-        getCommandArgValue(args, "http-port");
-      const httpPort = portValue
-        ? Number(portValue)
-        : await this.allocatePort();
-      if (!Number.isInteger(httpPort) || httpPort <= 0) {
-        throw new Error(
-          "mcp-js command override has an invalid --sse-port/--http-port.",
-        );
-      }
-      return {
-        binary,
-        args,
-        httpPort,
-        nodeId:
-          getCommandArgValue(args, "node-id") ?? toNodeId(params.sessionId),
-      };
+  async ensureWorker(params: EnsureWorkerParams): Promise<McpJsWorker> {
+    const existing = this.workers.get(params.sessionId);
+    if (existing && existing.proc.exitCode === null) {
+      return { baseUrl: existing.baseUrl };
     }
+
+    const main = await this.ensureMainNode();
 
     const httpPort = await this.allocatePort();
     const clusterPort = await this.allocatePort();
+    const baseUrl = `http://127.0.0.1:${httpPort}`;
     const nodeId = toNodeId(params.sessionId);
     const args = buildMcpV8WorkerArgs({
       httpPort,
@@ -386,24 +336,9 @@ export class SubprocessWorkerProvider implements McpJsWorkerProvider {
       runtimeConfig: params.runtimeConfig,
       fsSnapshots: this.fsSnapshots,
       heapSnapshots: this.heapSnapshots,
-      languageBundle: this.languageBundle,
     });
-    return { binary: this.binaryPath, args, httpPort, nodeId };
-  }
 
-  async ensureWorker(params: EnsureWorkerParams): Promise<McpJsWorker> {
-    const existing = this.workers.get(params.sessionId);
-    if (existing && existing.proc.exitCode === null) {
-      return { baseUrl: existing.baseUrl };
-    }
-
-    const main = await this.ensureMainNode();
-
-    const launch = await this.resolveLaunch(params, main);
-    const { binary, args, httpPort, nodeId } = launch;
-    const baseUrl = `http://127.0.0.1:${httpPort}`;
-
-    const proc = this.spawn(binary, args);
+    const proc = this.spawn(this.binaryPath, args);
     proc.once("exit", () => {
       if (this.workers.get(params.sessionId)?.proc === proc) {
         this.workers.delete(params.sessionId);
