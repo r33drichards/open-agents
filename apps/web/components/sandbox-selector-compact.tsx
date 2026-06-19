@@ -27,8 +27,12 @@ interface SandboxOption {
 export const SANDBOX_OPTIONS: SandboxOption[] = [
   {
     id: "vercel",
-    name: "Vercel",
-    description: "Cloud sandbox",
+    // The deployed runtime always provisions the mcp-v8 (mcp-js) JavaScript
+    // sandbox (see lib/sandbox/provisioning.ts → provisionMcpJsSandbox), so the
+    // label reflects what actually runs. The `vercel` id is historical and inert
+    // — provisioning ignores it.
+    name: "mcp-v8",
+    description: "JavaScript sandbox (V8)",
   },
 ];
 
