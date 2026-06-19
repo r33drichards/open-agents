@@ -1035,7 +1035,6 @@ export function SessionChatContent({
   const [selectedWorkspaceFile, setSelectedWorkspaceFile] = useState<
     string | null
   >(null);
-  const [mobileArchiveDialogOpen, setMobileArchiveDialogOpen] = useState(false);
   const [mobileShareOpen, setMobileShareOpen] = useState(false);
   const [cursorPosition, setCursorPosition] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
@@ -3300,39 +3299,6 @@ export function SessionChatContent({
             if (!open) setShareRequested(false);
           }}
         />
-
-        {/* Archive confirmation dialog */}
-        <Dialog
-          open={mobileArchiveDialogOpen}
-          onOpenChange={setMobileArchiveDialogOpen}
-        >
-          <DialogContent showCloseButton={false}>
-            <DialogHeader>
-              <DialogTitle>Archive session?</DialogTitle>
-              <DialogDescription>
-                This will stop the sandbox and archive the session. You can
-                still view it in the archive tab.
-              </DialogDescription>
-            </DialogHeader>
-            <DialogFooter>
-              <DialogClose asChild>
-                <Button variant="outline">Cancel</Button>
-              </DialogClose>
-              <DialogClose asChild>
-                <Button
-                  onClick={() => {
-                    void archiveSession().catch((error: unknown) => {
-                      console.error("Failed to archive session:", error);
-                    });
-                    router.push("/sessions");
-                  }}
-                >
-                  Archive
-                </Button>
-              </DialogClose>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
 
         {/* Main content: chat, diff, or file */}
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden">

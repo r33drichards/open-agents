@@ -42,6 +42,15 @@ mock.module("ai", () => ({
   },
 }));
 
+// Mock the agent package barrel so the route's transitive import of the Azure
+// helpers doesn't load the full agent surface (models/tools), which pulls many
+// `ai` named exports bun's mock would otherwise have to enumerate. Azure is not
+// configured in these tests, so the helpers report disabled / no model id.
+mock.module("@open-agents/agent", () => ({
+  getAzureModelId: () => null,
+  isAzureModelEnabled: () => false,
+}));
+
 mock.module("server-only", () => ({}));
 
 mock.module("@/lib/session/get-server-session", () => ({

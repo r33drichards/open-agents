@@ -1,7 +1,7 @@
 # mcp-js (r33drichards/mcp-js) sandbox backend for open-agents — Railway.
 #
 # Based on the toolbox image (scratch + prebuilt mcp-v8 release binary + the
-# bundled WASM languages incl. an in-process craftos sim), on mcp-v8 v0.17.0,
+# bundled WASM languages incl. an in-process craftos sim), on mcp-v8 v0.18.0-rc.1,
 # with a per-session content-addressed FILESYSTEM (no heap snapshots) so each
 # session gets persistent /work state that coexists with the WASM languages.
 # craftos runs in-process via craftos.wasm (no remote --mcp-server dependency).
@@ -29,7 +29,7 @@ RUN node build-bootstrap.mjs /build/bootstrap.js
 # ── Stage 2: assemble a minimal rootfs for the scratch image ───────────────
 FROM debian:bookworm-slim AS rootfs
 
-ARG MCP_V8_VERSION=v0.17.0
+ARG MCP_V8_VERSION=v0.18.0-rc.1
 ARG TARGETARCH
 
 RUN apt-get update && apt-get install -y --no-install-recommends \

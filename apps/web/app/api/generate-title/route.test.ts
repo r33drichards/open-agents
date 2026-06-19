@@ -10,8 +10,14 @@ let generateTextResult: { text: string } | Error = {
   text: "Generated session title",
 };
 
-mock.module("ai", () => ({
+// Mock the agent package barrel so importing `gateway` doesn't drag in the
+// whole agent surface (models/tools), which pulls many `ai` named exports that
+// bun's mock would otherwise have to enumerate.
+mock.module("@open-agents/agent", () => ({
   gateway: (modelId: string) => modelId,
+}));
+
+mock.module("ai", () => ({
   generateText: async (input: { prompt: string }) => {
     generateTextCalls.push(input);
 
