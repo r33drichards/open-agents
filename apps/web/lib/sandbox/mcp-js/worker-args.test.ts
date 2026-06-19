@@ -111,4 +111,53 @@ describe("buildMcpV8WorkerArgs", () => {
 
     expect(args.some((arg) => arg.startsWith("--policies-json="))).toBe(false);
   });
+
+  test("language bundle adds wasm modules + default fetch/fs policies", () => {
+    const args = buildMcpV8WorkerArgs({
+      httpPort: 5001,
+      clusterPort: 5002,
+      nodeId: "sess-abc",
+      storageDir: "/data",
+      advertiseHost: "127.0.0.1",
+      transport: "sse",
+      languageBundle: { dir: "/opt/languages" },
+    });
+
+    expect(args).toContain("--allow-external-modules");
+    expect(args).toContain("--wasm-module");
+    expect(args).toContain("lua=/opt/languages/lua.wasm:512m");
+    expect(args).toContain("craftos=/opt/languages/craftos.wasm:512m");
+
+    const policiesArg = args.find((arg) => arg.startsWith("--policies-json="));
+    const json = JSON.parse(policiesArg?.split("=").slice(1).join("=") ?? "{}");
+    expect(json).toEqual({
+      fetch: { policies: [{ url: "file:///opt/languages/fetch.rego" }] },
+      filesystem: {
+        policies: [{ url: "file:///opt/languages/filesystem.rego" }],
+      },
+    });
+  });
+
+  test("an OPA-backed capability overrides the bundle's default policy", () => {
+    const args = buildMcpV8WorkerArgs({
+      httpPort: 5001,
+      clusterPort: 5002,
+      nodeId: "sess-abc",
+      storageDir: "/data",
+      advertiseHost: "127.0.0.1",
+      languageBundle: { dir: "/opt/languages" },
+      runtimeConfig: {
+        capabilities: {
+          fetch: { enabled: true, opaUrls: ["http://opa:8181"] },
+        },
+      },
+    });
+
+    const policiesArg = args.find((arg) => arg.startsWith("--policies-json="));
+    const json = JSON.parse(policiesArg?.split("=").slice(1).join("=") ?? "{}");
+    expect(json.fetch).toEqual({ policies: [{ url: "http://opa:8181" }] });
+    expect(json.filesystem).toEqual({
+      policies: [{ url: "file:///opt/languages/filesystem.rego" }],
+    });
+  });
 });

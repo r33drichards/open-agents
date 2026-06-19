@@ -3,6 +3,12 @@ import type {
   McpJsRuntimeConfig,
 } from "@open-agents/sandbox";
 import type { McpJsFsSnapshotConfig } from "@/lib/sandbox/config";
+import {
+  buildLanguageBundleArgs,
+  bundledFetchPolicyUrl,
+  bundledFilesystemPolicyUrl,
+  type LanguageBundle,
+} from "./language-bundle";
 
 /** Inputs for {@link buildMcpV8WorkerArgs}. */
 export interface BuildWorkerArgsParams {
@@ -46,6 +52,13 @@ export interface BuildWorkerArgsParams {
    * incompatible with WASM modules. Heap and fs are independent axes.
    */
   heapSnapshots?: boolean;
+  /**
+   * Bundled toolbox languages to launch the worker with (picat, lua, craftos,
+   * …). When set, the worker gets the matching `--wasm-module`/`--instructions`
+   * flags and the bundle's default fetch/filesystem Rego policies. Omitted for
+   * the coordinator (it serves no executions).
+   */
+  languageBundle?: LanguageBundle;
 }
 
 /**
@@ -117,9 +130,16 @@ export function buildMcpV8WorkerArgs(params: BuildWorkerArgsParams): string[] {
     args.push(`--cache-dir=${params.storageDir}/s3-cache/${params.nodeId}`);
   }
 
+  // Bundled toolbox languages (wasm modules + instructions). Their default
+  // fetch/filesystem policies are merged into --policies-json below.
+  if (params.languageBundle) {
+    args.push(...buildLanguageBundleArgs(params.languageBundle));
+  }
+
   const policiesJson = buildPoliciesJson(
     params.runtimeConfig?.capabilities,
     fs?.enabled ? fs.policyFilePath : undefined,
+    params.languageBundle?.dir,
   );
   if (policiesJson) {
     args.push(`--policies-json=${policiesJson}`);
@@ -143,6 +163,7 @@ const CAPABILITY_KEYS = ["fetch", "filesystem", "subprocess"] as const;
 function buildPoliciesJson(
   capabilities?: McpJsCapabilities,
   fsPolicyFilePath?: string,
+  languageBundleDir?: string,
 ): string | undefined {
   const policies: Record<string, { policies: { url: string }[] }> = {};
 
@@ -156,8 +177,24 @@ function buildPoliciesJson(
     }
   }
 
+  // The language bundle ships secure-by-default fetch/filesystem policies the
+  // toolbox languages rely on; apply them unless a capability above already
+  // set that surface.
+  if (languageBundleDir) {
+    if (!policies.fetch) {
+      policies.fetch = {
+        policies: [{ url: bundledFetchPolicyUrl(languageBundleDir) }],
+      };
+    }
+    if (!policies.filesystem) {
+      policies.filesystem = {
+        policies: [{ url: bundledFilesystemPolicyUrl(languageBundleDir) }],
+      };
+    }
+  }
+
   // FS snapshots need the filesystem surface enabled. Mount the local rego
-  // policy via a file:// URL unless a capability policy already set one.
+  // policy via a file:// URL unless a capability/bundle policy already set one.
   if (fsPolicyFilePath && !policies.filesystem) {
     policies.filesystem = {
       policies: [{ url: `file://${fsPolicyFilePath}` }],

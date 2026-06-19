@@ -41,6 +41,7 @@ export function HomePage({ hasSessionCookie, lastRepo }: HomePageProps) {
     autoCommitPush: boolean;
     autoCreatePr: boolean;
     vercelProject?: VercelProjectSelection | null;
+    commandOverride?: string;
   }) => {
     setIsCreating(true);
     try {
@@ -54,6 +55,7 @@ export function HomePage({ hasSessionCookie, lastRepo }: HomePageProps) {
         autoCommitPush: input.autoCommitPush,
         autoCreatePr: input.autoCreatePr,
         vercelProject: input.vercelProject,
+        commandOverride: input.commandOverride,
       });
 
       router.push(`/sessions/${createdSession.id}/chats/${chat.id}`);
