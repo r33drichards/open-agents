@@ -213,6 +213,7 @@ mock.module("workflow/api", () => ({
       return Promise.resolve(runStatus);
     },
   }),
+  start: () => ({ runId: "wrun_test-child" }),
 }));
 
 mock.module("./chat-post-finish", () => spies);
@@ -338,9 +339,37 @@ mock.module("ai", () => ({
 
 mock.module("@open-agents/agent", () => ({}));
 
+// Provide every `@/lib/db/sessions` export the workflow's import graph pulls
+// in (the child-spawn / scheduling kick modules import several), so bun's
+// module mock satisfies all static named imports. Only getChatById /
+// getSessionById are exercised by these tests; the rest are inert stubs.
 mock.module("@/lib/db/sessions", () => ({
   getChatById: async () => testChatRecord,
   getSessionById: async () => testSessionRecord,
+  getChatMessages: async () => [],
+  getChatsBySessionId: async () => [],
+  markChatRead: async () => undefined,
+  updateChatActiveStreamId: async () => undefined,
+  updateSession: async () => undefined,
+  upsertChatMessageScoped: async () => undefined,
+  createSessionWithInitialChat: async () => ({
+    session: testSessionRecord,
+    chat: testChatRecord,
+  }),
+  forkChatThroughMessage: async () => ({
+    session: testSessionRecord,
+    chat: testChatRecord,
+  }),
+  forkSessionWithChat: async () => ({
+    session: testSessionRecord,
+    chat: testChatRecord,
+  }),
+}));
+
+mock.module("server-only", () => ({}));
+
+mock.module("@/lib/db/chat-steer", () => ({
+  drainSteerMessages: async () => [],
 }));
 
 mock.module("@/lib/db/user-preferences", () => ({

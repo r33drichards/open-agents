@@ -26,6 +26,7 @@ const upsertCalls: Array<Record<string, unknown>> = [];
 const provisioningKickCalls: string[] = [];
 
 const originalNodeEnv = process.env.NODE_ENV;
+const originalTrialDemo = process.env.OPEN_AGENTS_TRIAL_DEMO;
 
 mock.module("@/lib/session/get-server-session", () => ({
   getServerSession: async () => currentSession,
@@ -125,6 +126,11 @@ function createJsonRequest(
 describe("/api/sessions POST vercel project linking", () => {
   afterEach(() => {
     Object.assign(process.env, { NODE_ENV: originalNodeEnv });
+    if (originalTrialDemo === undefined) {
+      delete process.env.OPEN_AGENTS_TRIAL_DEMO;
+    } else {
+      process.env.OPEN_AGENTS_TRIAL_DEMO = originalTrialDemo;
+    }
   });
 
   beforeEach(() => {
@@ -180,7 +186,10 @@ describe("/api/sessions POST vercel project linking", () => {
   });
 
   test("blocks repo-backed sessions for trial users", async () => {
-    Object.assign(process.env, { NODE_ENV: "development" });
+    Object.assign(process.env, {
+      NODE_ENV: "development",
+      OPEN_AGENTS_TRIAL_DEMO: "1",
+    });
     const { POST } = await routeModulePromise;
 
     currentSession = {
