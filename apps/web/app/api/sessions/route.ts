@@ -19,6 +19,8 @@ import {
   parseGitHubHttpsUrl,
 } from "@/lib/github/urls";
 import { checkRateLimit, rateLimitKey } from "@/lib/rate-limit";
+import { isCommandOverrideAllowedForUser } from "@/lib/sandbox/config";
+import { parseMcpJsRuntimeConfig } from "@/lib/sandbox/mcp-js/runtime-config-schema";
 import { kickSandboxProvisioningWorkflow } from "@/lib/sandbox/provisioning-kick";
 import { getRandomCityName } from "@/lib/random-city";
 import { getServerSession } from "@/lib/session/get-server-session";
@@ -49,6 +51,8 @@ interface CreateSessionRequest {
   autoCommitPush?: boolean;
   autoCreatePr?: boolean;
   vercelProject?: VercelProjectSelection | null;
+  /** Custom mcp-v8 launch command (allowlisted users only; see config). */
+  commandOverride?: string;
 }
 
 function generateBranchName(username: string, name?: string | null): string {
@@ -304,7 +308,24 @@ export async function POST(req: Request) {
     sandboxType = "vercel",
     autoCommitPush,
     autoCreatePr,
+    commandOverride,
   } = body;
+
+  // A custom launch command spawns an arbitrary host process, so only honor it
+  // for allowlisted users (see isCommandOverrideAllowedForUser). When accepted,
+  // seed an mcp-js sandbox state carrying the runtimeConfig so provisioning
+  // applies it on first spawn; otherwise fall back to the default state.
+  const overrideRuntimeConfig =
+    commandOverride && isCommandOverrideAllowedForUser(session.user.id)
+      ? parseMcpJsRuntimeConfig({ commandOverride })
+      : null;
+  const initialSandboxState = overrideRuntimeConfig
+    ? {
+        type: "mcp-js" as const,
+        baseUrl: "",
+        runtimeConfig: overrideRuntimeConfig,
+      }
+    : { type: sandboxType };
 
   let finalBranch = branch;
   if (isNewBranch) {
@@ -394,7 +415,7 @@ export async function POST(req: Request) {
           ? effectiveAutoCreatePr
           : false,
         globalSkillRefs: preferences.globalSkillRefs,
-        sandboxState: { type: sandboxType },
+        sandboxState: initialSandboxState,
         lifecycleState: "provisioning",
         lifecycleVersion: 0,
       },

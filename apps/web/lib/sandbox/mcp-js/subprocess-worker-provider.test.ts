@@ -36,6 +36,7 @@ async function makeProvider(overrides: {
   spawn: (command: string, args: string[]) => ReturnType<typeof makeFakeProc>;
   leaderReady: (clusterPort: number) => Promise<boolean>;
   leavePeer?: (clusterPort: number, nodeId: string) => Promise<void>;
+  allowCommandOverride?: boolean;
 }) {
   const { SubprocessWorkerProvider } = await modulePromise;
   let nextPort = 5001;
@@ -44,6 +45,7 @@ async function makeProvider(overrides: {
     storageDir: "/tmp/mcp-js-test",
     coordinatorHttpPort: COORD_HTTP,
     coordinatorClusterPort: COORD_CLUSTER,
+    allowCommandOverride: overrides.allowCommandOverride ?? false,
     readinessPollMs: 1,
     readinessTimeoutMs: 200,
     spawn: overrides.spawn,
@@ -96,6 +98,43 @@ describe("SubprocessWorkerProvider", () => {
     expect(w).toContain(`--join=127.0.0.1:${COORD_CLUSTER}`);
     expect(w).toContain("--join-as-learner");
     expect(w).toContain("--session-db-path=/tmp/mcp-js-test/sessions/s1");
+  });
+
+  test("spawns a commandOverride verbatim and derives baseUrl from its port", async () => {
+    const provider = await makeProvider({
+      spawn,
+      leaderReady,
+      allowCommandOverride: true,
+    });
+    const worker = await provider.ensureWorker({
+      sessionId: "s1",
+      runtimeConfig: {
+        commandOverride:
+          "/custom/mcp-v8 --sse-port 9999 --node-id=s1 --custom-flag marker",
+      },
+    });
+
+    // The worker is launched from the override's binary + args verbatim, and
+    // its reachable URL comes from the override's own --sse-port.
+    const w = spawnCalls[1];
+    expect(w?.command).toBe("/custom/mcp-v8");
+    expect(w?.args).toContain("--custom-flag");
+    expect(w?.args).toContain("9999");
+    expect(worker.baseUrl).toBe("http://127.0.0.1:9999");
+  });
+
+  test("ignores commandOverride when allowCommandOverride is off", async () => {
+    const provider = await makeProvider({ spawn, leaderReady });
+    const worker = await provider.ensureWorker({
+      sessionId: "s1",
+      runtimeConfig: {
+        commandOverride: "/custom/mcp-v8 --sse-port 9999",
+      },
+    });
+
+    // Falls back to the built argv on the default binary + allocated port.
+    expect(spawnCalls[1]?.command).toBe("mcp-v8");
+    expect(worker.baseUrl).toBe("http://127.0.0.1:5001");
   });
 
   test("adopts an already-running coordinator instead of spawning one", async () => {
