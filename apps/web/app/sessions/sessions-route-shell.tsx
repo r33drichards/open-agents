@@ -91,8 +91,8 @@ export function SessionsRouteShell({
   const { preferences } = useUserPreferences();
 
   const openNewSessionDialog = useCallback(() => {
-    setNewSessionOpen(true);
-  }, []);
+    router.push("/sessions/new");
+  }, [router]);
 
   const handleSessionClick = useCallback(
     (targetSession: SessionWithUnread) => {
